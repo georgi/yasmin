@@ -12,7 +12,7 @@ rule token = parse
   | ['\n' '\r' ]
       { Lexing.new_line lexbuf; token lexbuf }
 
-  | "def"                                 { DEF }
+  | "fun"                                 { FUN }
   | "extern"                              { EXTERN }
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
@@ -33,14 +33,17 @@ rule token = parse
   (* Parens *)
   | '('                                   { LPAREN }
   | ')'                                   { RPAREN }
+  | '{'                                   { LCURLY }
+  | '}'                                   { RCURLY }
+  | '['                                   { LBRACK }
+  | ']'                                   { RBRACK }
 
   (* Punctuation *)
+  | "->"                                  { ARROW }
   | ','                                   { COMMA }
   | ':'                                   { COLON }
   | ';'                                   { SEMICOLON }
   | '='                                   { EQUALS }
-  | '{'                                   { LCURLY }
-  | '}'                                   { RCURLY }
 
   (* binary operators *)
   | '+'                                   { PLUS }

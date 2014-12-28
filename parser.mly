@@ -17,11 +17,11 @@
     raise Parsing.Parse_error
 %}
 
-%token DEF EXTERN INT BOOL BYTE FLOAT VOID
+%token FUN EXTERN INT BOOL BYTE FLOAT VOID ARROW
 %token <string> IDENT
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
-%token LPAREN RPAREN LCURLY RCURLY
+%token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
 %token COMMA SEMICOLON COLON EQUALS
 %token EOS
 %token UNKNOWN
@@ -36,64 +36,56 @@
 expr:
   | FLOAT_LITERAL                    { FloatLiteral $1 }
   | INT_LITERAL                      { IntLiteral $1 }
+  | LBRACK array RBRACK              { ArrayLiteral($2, Undefined) }
 
   | LPAREN expr RPAREN               { $2 }
   | LPAREN expr                      { parse_error "expected ')'" }
 
-  | IDENT LPAREN arg_expr RPAREN     { Call($1, $3, Undefined) }
-  | IDENT LPAREN RPAREN              { Call($1, [], Undefined) }
-  | IDENT LPAREN arg_expr            { parse_error "expected ')'" }
-  | IDENT                            { Variable($1, Undefined) }
+  | IDENT args                       { Call($1, $2, Undefined) }
+  | IDENT                            { Call($1, [], Undefined) }
 
   | expr PLUS expr                   { Call("+", [$1; $3], Undefined) }
   | expr MINUS expr                  { Call("-", [$1; $3], Undefined) }
   | expr TIMES expr                  { Call("*", [$1; $3], Undefined) }
 
-  | DEF prototype EQUALS expr        { Function($2, $4) }
-  | LCURLY sequence RCURLY           { Sequence($2) }
+  | IDENT EQUALS expr                { Def($1, $3, Undefined) }
+  | LCURLY sequence RCURLY           { Sequence($2, Undefined) }
+  | FUN idents COLON types EQUALS expr { Fun($2, $4, $6, Undefined) }
 
   | UNKNOWN                          { parse_error "unknown token when expecting an expression." }
+;
+array:
+  | expr COMMA array                 { $1 :: $3 }
+  | expr                             { [$1] }
 ;
 sequence:
   | expr SEMICOLON sequence          { $1 :: $3 }    
   | expr                             { [$1] }    
 ;
 type_def:
-  | BOOL                             { Bool }
   | BYTE                             { Byte }
   | INT                              { Int }
   | FLOAT                            { Float }
   | VOID                             { Void }
 ;
-arg_expr:
-  | expr COMMA arg_expr              { $1 :: $3 }
+types:
+  | type_def ARROW types             { $1 :: $3 }
+  | type_def                         { [$1] }
+;
+idents:
+  | IDENT idents                     { $1 :: $2 }
+  | IDENT                            { [$1] }
+;
+args:
+  | expr args                        { $1 :: $2 }
   | expr                             { [$1] }
 ;
-prototype:
-  | IDENT LPAREN arg_defs RPAREN     { ($1, $3, Undefined) }
-  | IDENT LPAREN arg_defs            { parse_error "expected ')' in prototype" }
-  | IDENT                            { parse_error "expected '(' in prototype" }
-;
-arg_def:
-  | IDENT COLON type_def             { ($1, $3) }
-;
-arg_defs:
-  | arg_def COMMA arg_defs           { $1 :: $3 }
-  | arg_def                          { [$1] }
-  |                                  { [] }
-;
-
-extern:
-  | EXTERN prototype                 { $2 }
-;
-
 toplevel:
   | statement terminator             { $1 }
   | terminator                       { $1 }
 ;
 statement:
   | expr                             { Expression $1 }
-  | extern                           { Extern $1 }
 ;
 terminator:
   | SEMICOLON                        { Sep }

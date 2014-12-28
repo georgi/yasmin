@@ -6,6 +6,8 @@ open Llvm
 
 (* top ::= definition | external | expression | ';' *)
 let rec main_loop lexbuf =
+  let type_env = Types.new_env in
+  let code_env = Codegen.new_env in
   let prompt = fun () ->
     print_string "ready> "; flush stdout;
     main_loop lexbuf in
@@ -22,12 +24,9 @@ let rec main_loop lexbuf =
   (*   prompt () *)
 
   | Ast.Expression e ->
-    let t, e = (Types.typecheck e Types.new_env) in
-    dump_value (Codegen.generate e Codegen.new_env);
+    let e' = Types.typecheck type_env e in
+    dump_value (Codegen.generate code_env e');
     prompt ()
-
-  | _ ->
-    Lexing.flush_input lexbuf; prompt ()
 
   with
   | Parsing.Parse_error ->
