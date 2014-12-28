@@ -17,18 +17,17 @@ let rec main_loop lexbuf =
     Lexing.flush_input lexbuf;
     main_loop lexbuf
 
-  | Ast.Definition e ->
-    print_endline "parsed a function definition:";
-    dump_value (Codegen.codegen_func e);
-    prompt ()
-  | Ast.Extern e ->
-    print_endline "parsed an extern:";
-    dump_value (Codegen.codegen_proto e);
-    prompt ()
+  (* | Ast.Extern e -> *)
+  (*   dump_value (Codegen.generate e); *)
+  (*   prompt () *)
+
   | Ast.Expression e ->
-    print_endline "parsed a top-level expr:";
-    dump_value (Codegen.codegen_func e);
+    let t, e = (Types.typecheck e Types.new_env) in
+    dump_value (Codegen.generate e Codegen.new_env);
     prompt ()
+
+  | _ ->
+    Lexing.flush_input lexbuf; prompt ()
 
   with
   | Parsing.Parse_error ->

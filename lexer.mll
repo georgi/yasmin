@@ -14,12 +14,18 @@ rule token = parse
 
   | "def"                                 { DEF }
   | "extern"                              { EXTERN }
+  | "bool"                                { BOOL }
+  | "byte"                                { BYTE }
+  | "int"                                 { INT }
+  | "float"                               { FLOAT }
+  | "void"                                { VOID }
 
   (* identifier: [a-zA-Z][a-zA-Z0-9]* *)
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
 
   (* number: [0-9.]+ *)
-  | ( digit ( digit | '.' )* ) as lxm     { NUMBER(float_of_string lxm) }
+  | ( digit* ) as lxm                     { INT_LITERAL(int_of_string lxm) }
+  | ( digit ( digit | '.' )* ) as lxm     { FLOAT_LITERAL(float_of_string lxm) }
 
   (* Comment until end of line. *)
   | '#' [^ '\n']*                         { token lexbuf }
@@ -30,10 +36,10 @@ rule token = parse
 
   (* Punctuation *)
   | ','                                   { COMMA }
+  | ':'                                   { COLON }
   | ';'                                   { SEMICOLON }
 
   (* binary operators *)
-  | '<'                                   { LESS_THAN }
   | '+'                                   { PLUS }
   | '-'                                   { MINUS }
   | '*'                                   { TIMES }

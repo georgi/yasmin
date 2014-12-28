@@ -9,92 +9,72 @@ exception Error of string
 let context = global_context ()
 let the_module = create_module context "my cool jit"
 let builder = builder context
-let named_values:(string, llvalue) Hashtbl.t = Hashtbl.create 10
-let double_type = double_type context
 
-let rec codegen_expr = function
-  | Ast.Number n -> const_float double_type n
-  | Ast.Variable name ->
-    (try Hashtbl.find named_values name with
-    | Not_found -> raise (Error "unknown variable name"))
-  | Ast.Binary (op, lhs, rhs) ->
-    let lhs_val = codegen_expr lhs in
-    let rhs_val = codegen_expr rhs in
-    begin
-      match op with
-      | '+' -> build_fadd lhs_val rhs_val "addtmp" builder
-      | '-' -> build_fsub lhs_val rhs_val "subtmp" builder
-      | '*' -> build_fmul lhs_val rhs_val "multmp" builder
-      | '<' ->
-        (* Convert bool 0/1 to double 0.0 or 1.0 *)
-        let i = build_fcmp Fcmp.Ult lhs_val rhs_val "cmptmp" builder in
-        build_uitofp i double_type "booltmp" builder
-      | _ -> raise (Error "invalid binary operator")
-    end
-  | Ast.Call (callee, args) ->
-    (* Look up the name in the module table. *)
-    let callee =
-      match lookup_function callee the_module with
-      | Some callee -> callee
-      | None -> raise (Error "unknown function referenced")
-    in
-    let params = params callee in
+let kind_of t = classify_type (type_of t)
 
-    (* If argument mismatch error. *)
-    if Array.length params == Array.length args then () else
-      raise (Error "incorrect # arguments passed");
-    let args = Array.map codegen_expr args in
-    build_call callee args "calltmp" builder
+let new_env:(string, llvalue) Hashtbl.t = Hashtbl.create 10
 
-let codegen_proto = function
-  | Ast.Prototype (name, args) ->
-    (* Make the function type: double(double,double) etc. *)
-    let doubles = Array.make (Array.length args) double_type in
-    let ft = function_type double_type doubles in
-    let f =
-      match lookup_function name the_module with
-      | None -> declare_function name ft the_module
+let lookup env name =
+  (try Hashtbl.find env name with
+   | Not_found -> raise (Error "unknown variable name"))
 
-      (* If 'f' conflicted, there was already something named 'name'. If it
-       * has a body, don't allow redefinition or reextern. *)
-      | Some f ->
-        (* If 'f' already has a body, reject this. *)
-        if block_begin f <> At_end f then
-          raise (Error "redefinition of function");
+let lookup_callee name =
+  match lookup_function name the_module with
+  | Some name -> name
+  | None -> raise (Error "unknown function referenced")
 
-        (* If 'f' took a different number of arguments, reject. *)
-        if element_type (type_of f) <> ft then
-          raise (Error "redefinition of function with different # args");
-        f
-    in
+let type_for = function
+  | Ast.Float -> float_type context
+  | Ast.Bool -> i1_type context
+  | Ast.Byte -> i8_type context
+  | Ast.Int -> i32_type context
+  | Ast.Void -> void_type context
+  | Ast.Undefined -> void_type context
 
-    (* Set names for all arguments. *)
-    Array.iteri (fun i a ->
-      let n = args.(i) in
-      set_value_name n a;
-      Hashtbl.add named_values n a;
-    ) (params f);
-    f
+let assign_env f arg_defs env =
+  let iter i value =
+    let (name, _) = List.nth arg_defs i in
+    set_value_name name value;
+    Hashtbl.add env name value in
+  Array.iteri iter (params f)
 
-let codegen_func = function
+let generate_proto (name, arg_defs, ret_type) env = 
+  let arg_types = List.map (fun (_, t) -> type_for t) arg_defs in
+  let ft = function_type (type_for ret_type) (Array.of_list arg_types) in
+  let f = match lookup_function name the_module with
+    | None -> declare_function name ft the_module
+    | Some f -> raise (Error "redefinition of function") in
+  assign_env f arg_defs env;
+  f
+
+let rec generate e env = match e with
+  | Ast.FloatLiteral n -> const_float (double_type context) n
+  | Ast.IntLiteral n -> const_int (i32_type context) n
+  | Ast.Variable (name, _) -> lookup env name
+  | Ast.Call ("+", [lhs; rhs], Ast.Int) ->
+     build_add (generate lhs env) (generate rhs env) "addtmp" builder
+  | Ast.Call ("+", [lhs; rhs], Ast.Float) ->
+     build_fadd (generate lhs env) (generate rhs env) "addtmp" builder
+
+  | Ast.Call (name, args, ret_type) ->
+     let callee = lookup_callee name in 
+     let args = List.map (fun a -> generate a env) args in
+     build_call callee (Array.of_list args) "calltmp" builder
+
   | Ast.Function (proto, body) ->
-    Hashtbl.clear named_values;
-    let the_function = codegen_proto proto in
+     let env = new_env in
+     let the_function = generate_proto proto env in
+     let bb = append_block context "entry" the_function in
+     
+     position_at_end bb builder;
 
-    (* Create a new basic block to start insertion into. *)
-    let bb = append_block context "entry" the_function in
-    position_at_end bb builder;
+     try
+       let ret_val = generate body env in
+       let _ = build_ret ret_val builder in
 
-    try
-      let ret_val = codegen_expr body in
+       Llvm_analysis.assert_valid_function the_function;
 
-      (* Finish off the function. *)
-      let _ = build_ret ret_val builder in
-
-      (* Validate the generated code, checking for consistency. *)
-      Llvm_analysis.assert_valid_function the_function;
-
-      the_function
-    with e ->
-      delete_function the_function;
-      raise e
+       the_function
+     with e ->
+       delete_function the_function;
+       raise e
