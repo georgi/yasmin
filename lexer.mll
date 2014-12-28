@@ -38,6 +38,9 @@ rule token = parse
   | ','                                   { COMMA }
   | ':'                                   { COLON }
   | ';'                                   { SEMICOLON }
+  | '='                                   { EQUALS }
+  | '{'                                   { LCURLY }
+  | '}'                                   { RCURLY }
 
   (* binary operators *)
   | '+'                                   { PLUS }

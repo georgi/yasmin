@@ -51,8 +51,13 @@ let rec generate e env = match e with
   | Ast.FloatLiteral n -> const_float (double_type context) n
   | Ast.IntLiteral n -> const_int (i32_type context) n
   | Ast.Variable (name, _) -> lookup env name
+  | Ast.Sequence list ->
+     let vals = List.map (fun e -> generate e env) list in
+     List.nth vals ((List.length vals) - 1)
+     
   | Ast.Call ("+", [lhs; rhs], Ast.Int) ->
      build_add (generate lhs env) (generate rhs env) "addtmp" builder
+
   | Ast.Call ("+", [lhs; rhs], Ast.Float) ->
      build_fadd (generate lhs env) (generate rhs env) "addtmp" builder
 

@@ -21,8 +21,8 @@
 %token <string> IDENT
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
-%token LPAREN RPAREN
-%token COMMA SEMICOLON COLON
+%token LPAREN RPAREN LCURLY RCURLY
+%token COMMA SEMICOLON COLON EQUALS
 %token EOS
 %token UNKNOWN
 %token PLUS MINUS TIMES
@@ -49,9 +49,14 @@ expr:
   | expr MINUS expr                  { Call("-", [$1; $3], Undefined) }
   | expr TIMES expr                  { Call("*", [$1; $3], Undefined) }
 
-  | DEF prototype expr               { Function($2, $3) }
+  | DEF prototype EQUALS expr        { Function($2, $4) }
+  | LCURLY sequence RCURLY           { Sequence($2) }
 
   | UNKNOWN                          { parse_error "unknown token when expecting an expression." }
+;
+sequence:
+  | expr SEMICOLON sequence          { $1 :: $3 }    
+  | expr                             { [$1] }    
 ;
 type_def:
   | BOOL                             { Bool }

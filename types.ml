@@ -15,6 +15,12 @@ let rec typecheck e env =
   match e with
   | Ast.FloatLiteral n -> (Ast.Float, e) 
   | Ast.IntLiteral n -> (Ast.Int, e)
+  | Ast.Sequence list ->
+     let tuples = List.map (fun e -> typecheck e env) list in
+     let expressions = List.map (fun (_, e) -> e) tuples in
+     let (last_type, _) = List.nth tuples ((List.length tuples) - 1) in
+     (last_type, Ast.Sequence expressions)
+     
   | Ast.Variable (name, _) ->
      let var_type = lookup env name in
      (var_type, Ast.Variable (name, var_type))
@@ -26,6 +32,12 @@ let rec typecheck e env =
        (lhs_type, Ast.Call ("+", [lhs; rhs], lhs_type))
      else
        raise (Error "+ used with different types")
+
+  | Ast.Call (name, args, _) ->
+     let tuples = List.map (fun arg -> typecheck arg env) args in
+     let expressions = List.map (fun (_, e) -> e) tuples in
+     let (last_type, _) = List.nth tuples ((List.length tuples) - 1) in
+     (last_type, Ast.Call ("+", expressions, last_type))
 
   | Ast.Function ((name, arg_defs, _), body) ->
     assign_env arg_defs env;
