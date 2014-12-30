@@ -1,27 +1,26 @@
-(*===----------------------------------------------------------------------===
- * Abstract Syntax Tree (aka Parse Tree)
- *===----------------------------------------------------------------------===*)
-
-type type_def =
+type type_name =
   | Bool
   | Byte
   | Int
   | Float
   | Void
-  | Array of int * type_def
-  | Function of type_def list * type_def
+  | Array of type_name * int
+  | Function of type_name list * type_name
   | Undefined
 
 type expr =
   | FloatLiteral of float
   | IntLiteral of int
-  | Sequence of expr list * type_def
-  | ArrayLiteral of expr list * type_def
-  | Call of string * expr list * type_def
-  | Def of string * expr * type_def
-  | Fun of string list * type_def list * expr * type_def
+  (* | ArrayLiteral of expr list * type_name *)
+  | Return of expr
+  | Let of type_name * string * expr * expr * type_name
+  | Sequence of expr list * type_name
+  | Var of string * type_name
+  | Call of string * expr list * type_name
+  | Fun of string * string list * type_name list * expr * type_name
 
 type toplevel =
   | Expression of expr
+  | FunDef of expr
   | Sep
   | End

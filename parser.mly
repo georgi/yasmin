@@ -1,6 +1,8 @@
+
 %{
   open Ast
   open Lexing
+      
   let parse_error s =
     begin
       try
@@ -17,7 +19,7 @@
     raise Parsing.Parse_error
 %}
 
-%token FUN EXTERN INT BOOL BYTE FLOAT VOID ARROW
+%token LET IN EXTERN INT BOOL BYTE FLOAT VOID RETURN
 %token <string> IDENT
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
@@ -34,60 +36,64 @@
 %%
 
 expr:
-  | FLOAT_LITERAL                    { FloatLiteral $1 }
-  | INT_LITERAL                      { IntLiteral $1 }
-  | LBRACK array RBRACK              { ArrayLiteral($2, Undefined) }
+  | FLOAT_LITERAL                             { FloatLiteral $1 }
+  | INT_LITERAL                               { IntLiteral $1 }
 
-  | LPAREN expr RPAREN               { $2 }
-  | LPAREN expr                      { parse_error "expected ')'" }
+  | type_name IDENT EQUALS expr IN expr       { Let ($1, $2, $4, $6, Undefined) }
 
-  | IDENT args                       { Call($1, $2, Undefined) }
-  | IDENT                            { Call($1, [], Undefined) }
+  | LPAREN expr RPAREN                        { $2 }
+  | LPAREN expr                               { parse_error "expected ')'" }
 
-  | expr PLUS expr                   { Call("+", [$1; $3], Undefined) }
-  | expr MINUS expr                  { Call("-", [$1; $3], Undefined) }
-  | expr TIMES expr                  { Call("*", [$1; $3], Undefined) }
+  | expr LBRACK expr RBRACK                   { Call ("[]", [$1; $3], Undefined) }
+  | expr LBRACK expr RBRACK EQUALS expr       { Call ("[]=", [$1; $3; $6], Undefined) }
+  | IDENT LPAREN params RPAREN                { Call ($1, $3, Undefined) }
+  | IDENT                                     { Var ($1, Undefined) }
 
-  | IDENT EQUALS expr                { Def($1, $3, Undefined) }
-  | LCURLY sequence RCURLY           { Sequence($2, Undefined) }
-  | FUN idents COLON types EQUALS expr { Fun($2, $4, $6, Undefined) }
+  | expr PLUS expr                            { Call ("+", [$1; $3], Undefined) }
+  | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
+  | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
 
-  | UNKNOWN                          { parse_error "unknown token when expecting an expression." }
+  | LCURLY sequence RCURLY                    { Sequence ($2, Undefined) }
+
+  | fun_def                                   { $1 }
+
+  | UNKNOWN { parse_error "unknown token when expecting an expression." }
+;
+
+fun_def:
+  | type_name IDENT LPAREN args RPAREN LCURLY sequence RCURLY
+      { Fun($2, List.map snd $4, List.map fst $4, Sequence ($7, Undefined), $1) }
 ;
 array:
-  | expr COMMA array                 { $1 :: $3 }
-  | expr                             { [$1] }
+  | expr COMMA array           { $1 :: $3 }
+  | expr                       { [$1] }
 ;
 sequence:
-  | expr SEMICOLON sequence          { $1 :: $3 }    
-  | expr                             { [$1] }    
+  | expr SEMICOLON sequence    { $1 :: $3 }    
+  | expr SEMICOLON             { [$1] }    
 ;
-type_def:
-  | BYTE                             { Byte }
-  | INT                              { Int }
-  | FLOAT                            { Float }
-  | VOID                             { Void }
-;
-types:
-  | type_def ARROW types             { $1 :: $3 }
-  | type_def                         { [$1] }
-;
-idents:
-  | IDENT idents                     { $1 :: $2 }
-  | IDENT                            { [$1] }
+type_name:
+  | BYTE                       { Byte }
+  | INT                        { Int }
+  | FLOAT                      { Float }
+  | VOID                       { Void }
 ;
 args:
-  | expr args                        { $1 :: $2 }
-  | expr                             { [$1] }
+  | type_name IDENT COMMA args { ($1, $2) :: $4 }
+  | type_name IDENT            { [($1, $2)] }
+;
+params:
+  | expr COMMA params          { $1 :: $3 }
+  | expr                       { [$1] }
 ;
 toplevel:
-  | statement terminator             { $1 }
-  | terminator                       { $1 }
+  | statement terminator       { $1 }
+  | terminator                 { $1 }
 ;
 statement:
-  | expr                             { Expression $1 }
+  | expr                       { Expression $1 }
 ;
 terminator:
-  | SEMICOLON                        { Sep }
-  | EOS                              { End }
+  | SEMICOLON                  { Sep }
+  | EOS                        { End }
 ;

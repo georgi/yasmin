@@ -12,13 +12,14 @@ rule token = parse
   | ['\n' '\r' ]
       { Lexing.new_line lexbuf; token lexbuf }
 
-  | "fun"                                 { FUN }
+  | "return"                              { RETURN }
   | "extern"                              { EXTERN }
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
   | "int"                                 { INT }
   | "float"                               { FLOAT }
   | "void"                                { VOID }
+  | "in"                                  { IN }
 
   (* identifier: [a-zA-Z][a-zA-Z0-9]* *)
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
@@ -39,7 +40,6 @@ rule token = parse
   | ']'                                   { RBRACK }
 
   (* Punctuation *)
-  | "->"                                  { ARROW }
   | ','                                   { COMMA }
   | ':'                                   { COLON }
   | ';'                                   { SEMICOLON }
