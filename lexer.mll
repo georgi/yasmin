@@ -12,13 +12,13 @@ rule token = parse
   | ['\n' '\r' ]
       { Lexing.new_line lexbuf; token lexbuf }
 
-  | "return"                              { RETURN }
   | "extern"                              { EXTERN }
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
   | "int"                                 { INT }
   | "float"                               { FLOAT }
   | "void"                                { VOID }
+  | "new"                                 { NEW }
   | "in"                                  { IN }
 
   (* identifier: [a-zA-Z][a-zA-Z0-9]* *)

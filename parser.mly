@@ -19,7 +19,7 @@
     raise Parsing.Parse_error
 %}
 
-%token LET IN EXTERN INT BOOL BYTE FLOAT VOID RETURN
+%token NEW IN EXTERN INT BOOL BYTE FLOAT VOID
 %token <string> IDENT
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
@@ -39,21 +39,22 @@ expr:
   | FLOAT_LITERAL                             { FloatLiteral $1 }
   | INT_LITERAL                               { IntLiteral $1 }
 
-  | type_name IDENT EQUALS expr IN expr       { Let ($1, $2, $4, $6, Undefined) }
-
   | LPAREN expr RPAREN                        { $2 }
   | LPAREN expr                               { parse_error "expected ')'" }
 
   | expr LBRACK expr RBRACK                   { Call ("[]", [$1; $3], Undefined) }
   | expr LBRACK expr RBRACK EQUALS expr       { Call ("[]=", [$1; $3; $6], Undefined) }
-  | IDENT LPAREN params RPAREN                { Call ($1, $3, Undefined) }
+  | IDENT params_parens                       { Call ($1, $2, Undefined) }
   | IDENT                                     { Var ($1, Undefined) }
 
   | expr PLUS expr                            { Call ("+", [$1; $3], Undefined) }
   | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
   | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
 
-  | LCURLY sequence RCURLY                    { Sequence ($2, Undefined) }
+  | type_name IDENT EQUALS expr IN sequence   { Let ($1, $2, $4, $6, Undefined) }
+
+  | NEW type_name                             { New (IntLiteral 1, $2) }
+  | NEW type_name LBRACK expr RBRACK          { New ($4, $2) }
 
   | fun_def                                   { $1 }
 
@@ -61,8 +62,8 @@ expr:
 ;
 
 fun_def:
-  | type_name IDENT LPAREN args RPAREN LCURLY sequence RCURLY
-      { Fun($2, List.map snd $4, List.map fst $4, Sequence ($7, Undefined), $1) }
+  | type_name IDENT args_parens LCURLY sequence RCURLY
+      { Fun($2, List.map snd $3, List.map fst $3, $5, $1) }
 ;
 array:
   | expr COMMA array           { $1 :: $3 }
@@ -77,23 +78,24 @@ type_name:
   | INT                        { Int }
   | FLOAT                      { Float }
   | VOID                       { Void }
+  | type_name TIMES            { Pointer $1 }    
+;
+args_parens:
+  | LPAREN args RPAREN         { $2 }
+  | LPAREN RPAREN              { [] }
 ;
 args:
   | type_name IDENT COMMA args { ($1, $2) :: $4 }
   | type_name IDENT            { [($1, $2)] }
+;
+params_parens:
+  | LPAREN params RPAREN       { $2 }
+  | LPAREN RPAREN              { [] }
 ;
 params:
   | expr COMMA params          { $1 :: $3 }
   | expr                       { [$1] }
 ;
 toplevel:
-  | statement terminator       { $1 }
-  | terminator                 { $1 }
-;
-statement:
-  | expr                       { Expression $1 }
-;
-terminator:
-  | SEMICOLON                  { Sep }
-  | EOS                        { End }
+  | expr SEMICOLON             { Expression $1 }
 ;
