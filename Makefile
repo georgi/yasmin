@@ -1,2 +1,2 @@
 build:
-	ocamlbuild -use-ocamlfind -package llvm ./toy.byte
+	ocamlbuild -use-ocamlfind -package llvm ./yasmin.byte
