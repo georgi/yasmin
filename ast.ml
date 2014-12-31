@@ -15,10 +15,10 @@ type expr =
   | IntLiteral of int
   | StringLiteral of string
   | New of expr * type_name
-  | Let of type_name * string * expr * expr list * type_name
+  | Let of string * expr * type_name
   | Var of string * type_name
   | Call of string * expr list * type_name
-  | Fun of string * string list * type_name list * expr list * type_name
+  | Fun of string * string list * type_name list * expr list * type_name * bool
 
 type toplevel =
   | Expression of expr

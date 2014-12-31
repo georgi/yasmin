@@ -9,6 +9,7 @@ let new_env =
   let env:((string * type_name list), type_name) Hashtbl.t = Hashtbl.create 10 in
   Hashtbl.add env ("+", [Int; Int]) Int;
   Hashtbl.add env ("+", [Float; Float]) Float;
+  Hashtbl.add env ("+", [Pointer Byte; Pointer Byte]) (Pointer Byte);
   env
 
 let assign_args args types env =
@@ -37,10 +38,10 @@ let type_of = function
   | IntLiteral _ -> Int
   | StringLiteral _ -> Pointer Byte
   | Call (_, _, t) -> t
-  | Let (_, _, _, _, t) -> t
+  | Let (_, _, t) -> t
   | Var (_, t) -> t
   | New (_, t) -> Pointer t
-  | Fun (_, _, _, _, t) -> t
+  | Fun (_, _, _, _, t, _) -> t
 
 let rec typecheck env e =
   match e with
@@ -54,20 +55,14 @@ let rec typecheck env e =
        New(expr', t)
      else raise (Error "new size must be int")
 
-  | Let (t, name, expr, body, _) ->
-     let expr' = typecheck env expr in
-     let env' = Hashtbl.copy env in
-     Hashtbl.add env' (name, []) t;
-     let body' = map (typecheck env') body in
-     if t = type_of expr' then
-       Let (t, name, expr', body', type_of (last body'))
-     else
-       raise (Error "right hand side has wrong type")
-
-  (* | Call ("+", [lhs; rhs], _) -> *)
-  (*    let lhs' = typecheck env lhs in *)
-  (*    let rhs' = typecheck env rhs in *)
-     
+  | Let (name, expr, _) ->
+     if Hashtbl.mem env (name, []) then
+       raise (Error ("reassigned variable " ^ name))
+     else 
+       let expr' = typecheck env expr in
+       let t = type_of expr' in
+       Hashtbl.add env (name, []) t;
+       Let (name, expr', t)
 
   | Call ("[]", [array; index], _) ->
      let array' = typecheck env array in
@@ -102,8 +97,8 @@ let rec typecheck env e =
      let t = lookup env name [] in
      Var (name, t)
 
-  | Fun (name, args, types, body, ret_type) ->
+  | Fun (name, args, types, body, ret_type, new_scope) ->
      let env' = assign_args args types env in
      let body' = map (typecheck env') body in
      Hashtbl.add env (name, types) ret_type;
-     Fun (name, args, types, body', ret_type)
+     Fun (name, args, types, body', ret_type, new_scope)

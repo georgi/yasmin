@@ -53,7 +53,7 @@ expr:
   | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
   | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
 
-  | type_name IDENT EQUALS expr IN sequence   { Let ($1, $2, $4, $6, Undefined) }
+  | IDENT EQUALS expr                         { Let ($1, $3, Undefined) }
 
   | NEW type_name                             { New (IntLiteral 1, $2) }
   | NEW type_name LBRACK expr RBRACK          { New ($4, $2) }
@@ -65,7 +65,7 @@ expr:
 
 fun_def:
   | type_name IDENT args_parens LCURLY sequence RCURLY
-      { Fun($2, List.map snd $3, List.map fst $3, $5, $1) }
+      { Fun($2, List.map snd $3, List.map fst $3, $5, $1, true) }
 ;
 array:
   | expr COMMA array           { $1 :: $3 }

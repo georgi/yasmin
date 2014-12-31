@@ -29,10 +29,10 @@ add(10);
 
 ## Variables
 
-Variables can be assigned only once.
+Local variable types are inferred and can be assigned only once.
 
 ```
-int x = "Hello" in
-int y = " World" in
+x = "Hello";
+y = " World";
 puts(x + y);
 ```

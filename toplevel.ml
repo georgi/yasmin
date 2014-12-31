@@ -3,7 +3,7 @@ open Llvm_executionengine
 
 let rec main_loop m engine code_env type_env lexbuf =
   let wrapper body =
-    Ast.Fun ("", [], [], body, Types.type_of (Types.last body)) in
+    Ast.Fun ("", [], [], body, Types.type_of (Types.last body), false) in
 
   let prompt = fun () ->
     print_string "ready> "; flush stdout;
@@ -21,7 +21,7 @@ let rec main_loop m engine code_env type_env lexbuf =
     print_string ((Types.string_of_type t) ^ ": ");
 
     match e with
-    | Ast.Fun (_,_,_,_,_) ->
+    | Ast.Fun (_,_,_,_,_,_) ->
        let f = Codegen.generate m code_env e' in
        dump_value f;
        prompt ();
