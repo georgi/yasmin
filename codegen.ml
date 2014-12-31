@@ -37,7 +37,8 @@ let declare_extern m code_env type_env =
   declare String "sdsnewlen" "sdsnewlen" [String; Int32];
   declare String "sdscatsds" "cat" [String; String];
   declare String "sdsdup" "dup" [String];
-  declare Int32 "sdslen" "len" [String]
+  declare Int32 "sdslen" "len" [String];
+  declare Void "sdsfree" "free" [String]
 
 let assign_params f args env =
   let iter i value =
@@ -48,7 +49,7 @@ let assign_params f args env =
 
 let make_call env name args arg_types =
   let callee = lookup env name arg_types in
-  build_call callee (Array.of_list args) name builder
+  build_call callee (Array.of_list args) "" builder
 
 let rec generate m env = function
   | FloatLiteral n -> const_float (double_type context) n
@@ -119,7 +120,9 @@ let rec generate m env = function
 
      try
        let body' = map (generate m env') body in
-       let _ = build_ret (last body') builder in
+       let ret = last body' in
+       let _ = if ret_type = Void then
+                 build_ret_void builder else build_ret ret builder in
        Llvm_analysis.assert_valid_function func;
        func
      with e ->
