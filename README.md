@@ -21,10 +21,10 @@ C-style types and function declaration.
 
 ```
 int add(int x) {
-  x + x;
+  x + x
 }
 
-add(10);
+add(10)
 ```
 
 ## Variables
@@ -32,7 +32,7 @@ add(10);
 Local variable types are inferred and can be assigned only once.
 
 ```
-x = "Hello";
-y = " World";
-puts(x + y);
+x = "Hello"
+y = " World"
+puts(x + y)
 ```

@@ -10,11 +10,11 @@ exception Error of string
 
 let context = global_context ()
 let builder = builder context
-let new_env:(string, llvalue) Hashtbl.t = Hashtbl.create 10
+let new_env:(string * type_name list, llvalue) Hashtbl.t = Hashtbl.create 10
 let last list = nth list ((length list) - 1)
 
-let lookup env name =
-  (try Hashtbl.find env name with
+let lookup env name args =
+  (try Hashtbl.find env (name, args) with
    | Not_found -> raise (Error ("unknown variable " ^ name)))
 
 let rec llvm_type_for = function
@@ -35,7 +35,7 @@ let declare_extern m code_env type_env =
                               (Array.of_list (map llvm_type_for args)) in
     let f = declare_function name ftype m in
     Hashtbl.add type_env (name, args) ret;
-    Hashtbl.add code_env name f in
+    Hashtbl.add code_env (name, args) f in
   declare Int32 "puts" [Pointer Byte];
   declare (Pointer Byte) "sdsnewlen" [Pointer Byte; Int32];
   declare (Pointer Byte) "sdscatsds" [Pointer Byte; Pointer Byte];
@@ -45,12 +45,12 @@ let assign_params f args env =
   let iter i value =
     let name = nth args i in
     set_value_name name value;
-    Hashtbl.add env name value in
+    Hashtbl.add env (name, []) value in
   Array.iteri iter (params f)
 
-let make_call env name args =
-  let callee = lookup env name in
-  build_call callee (Array.of_list args) "call" builder
+let make_call env name args arg_types =
+  let callee = lookup env name arg_types in
+  build_call callee (Array.of_list args) name builder
 
 let rec generate m env = function
   | FloatLiteral n -> const_float (double_type context) n
@@ -58,7 +58,7 @@ let rec generate m env = function
   | StringLiteral s ->
      let init = build_global_stringptr s "str" builder in
      let args = [init; const_int (i32_type context) (String.length s)] in
-     make_call env "sdsnewlen" args
+     make_call env "sdsnewlen" args [Pointer Byte; Int32]
 
   (* | ArrayLiteral (list, Array (n, t)) -> *)
   (*    let vals = map (generate m env) list in *)
@@ -71,18 +71,18 @@ let rec generate m env = function
 
   | Let (name, expr, t) ->
      let value = generate m env expr in
-     Hashtbl.add env name value;
+     Hashtbl.add env (name, []) value;
      set_value_name name value;
      value
      
   | Var (name, _) ->
-     lookup env name
+     lookup env name []
 
   | Call ("+", [lhs; rhs], (Pointer Byte)) ->
      let lhs' = generate m env lhs in
      let rhs' = generate m env rhs in
-     let lhs'' = make_call env "sdsdup" [lhs'] in
-     make_call env "sdscatsds" [lhs''; rhs']
+     let lhs'' = make_call env "sdsdup" [lhs'] [Pointer Byte] in
+     make_call env "sdscatsds" [lhs''; rhs'] [Pointer Byte; Pointer Byte]
      
   | Call ("+", [lhs; rhs], Int) ->
      build_add (generate m env lhs) (generate m env rhs) "add" builder
@@ -105,16 +105,17 @@ let rec generate m env = function
 
   | Call (name, args, _) ->
      let args' = map (generate m env) args in
-     make_call env name args'
+     let arg_types = map Types.type_of args in
+     make_call env name args' arg_types
 
-  | Fun (name, args, types, body, ret_type, new_scope) ->
-     let env' = if new_scope then Hashtbl.copy env else env in
+  | Fun (name, args, types, body, ret_type) ->
+     let env' = Hashtbl.copy env in
      let types' = map llvm_type_for types in
      let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
      let func = declare_function name fun_type m in
      let block = append_block context "entry" func in
 
-     Hashtbl.add env name func;
+     Hashtbl.add env (name, types) func;
      assign_params func args env';
      position_at_end block builder;
 

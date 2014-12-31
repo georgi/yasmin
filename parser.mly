@@ -19,7 +19,7 @@
     raise Parsing.Parse_error
 %}
 
-%token NEW IN EXTERN INT BOOL BYTE FLOAT VOID
+%token NEW INT BOOL BYTE FLOAT VOID NEWLINE
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
@@ -65,15 +65,15 @@ expr:
 
 fun_def:
   | type_name IDENT args_parens LCURLY sequence RCURLY
-      { Fun($2, List.map snd $3, List.map fst $3, $5, $1, true) }
+      { Fun($2, List.map snd $3, List.map fst $3, $5, $1) }
 ;
 array:
   | expr COMMA array           { $1 :: $3 }
   | expr                       { [$1] }
 ;
 sequence:
-  | expr SEMICOLON sequence    { $1 :: $3 }    
-  | expr SEMICOLON             { [$1] }    
+  | expr NEWLINE sequence      { $1 :: $3 }    
+  | expr NEWLINE               { [$1] }    
 ;
 type_name:
   | BYTE                       { Byte }
@@ -99,6 +99,8 @@ params:
   | expr                       { [$1] }
 ;
 toplevel:
-  | expr SEMICOLON             { Expression $1 }
-  | expr EOS                   { Expression $1 }
+  | sequence SEMICOLON         { Expression $1 }
+  | SEMICOLON                  { Sep }
+  | NEWLINE                    { Sep }
+  | EOS                        { End }
 ;

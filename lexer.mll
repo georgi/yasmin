@@ -9,17 +9,15 @@ let quote = '"'
 rule token = parse
   (* Skip any whitespace. *)
   | [' ' '\t']                            { token lexbuf }
-  | ['\n' '\r' ]
-      { Lexing.new_line lexbuf; token lexbuf }
 
-  | "extern"                              { EXTERN }
+  | ['\n' '\r' ]                          { NEWLINE }
+      
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
   | "int"                                 { INT }
   | "float"                               { FLOAT }
   | "void"                                { VOID }
   | "new"                                 { NEW }
-  | "in"                                  { IN }
 
   (* identifier: [a-zA-Z][a-zA-Z0-9]* *)
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }

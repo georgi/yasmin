@@ -41,7 +41,7 @@ let type_of = function
   | Let (_, _, t) -> t
   | Var (_, t) -> t
   | New (_, t) -> Pointer t
-  | Fun (_, _, _, _, t, _) -> t
+  | Fun (_, _, _, _, t) -> t
 
 let rec typecheck env e =
   match e with
@@ -97,8 +97,8 @@ let rec typecheck env e =
      let t = lookup env name [] in
      Var (name, t)
 
-  | Fun (name, args, types, body, ret_type, new_scope) ->
+  | Fun (name, args, types, body, ret_type) ->
      let env' = assign_args args types env in
      let body' = map (typecheck env') body in
      Hashtbl.add env (name, types) ret_type;
-     Fun (name, args, types, body', ret_type, new_scope)
+     Fun (name, args, types, body', ret_type)

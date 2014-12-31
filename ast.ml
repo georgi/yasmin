@@ -18,9 +18,9 @@ type expr =
   | Let of string * expr * type_name
   | Var of string * type_name
   | Call of string * expr list * type_name
-  | Fun of string * string list * type_name list * expr list * type_name * bool
+  | Fun of string * string list * type_name list * expr list * type_name
 
 type toplevel =
-  | Expression of expr
+  | Expression of expr list
   | Sep
   | End
