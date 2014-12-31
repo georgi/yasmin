@@ -6,21 +6,17 @@ exception Error of string
 let last list = nth list ((length list) - 1)
 
 let new_env =
-  let env:((string * type_name list), type_name) Hashtbl.t = Hashtbl.create 10 in
-  Hashtbl.add env ("+", [Int; Int]) Int;
-  Hashtbl.add env ("+", [Float; Float]) Float;
-  Hashtbl.add env ("+", [Pointer Byte; Pointer Byte]) (Pointer Byte);
+  let env:((string * type_name list), (string * type_name)) Hashtbl.t = Hashtbl.create 10 in
+  Hashtbl.add env ("+", [Int; Int]) ("+", Int);
+  Hashtbl.add env ("+", [Float; Float]) ("+", Float);
+  Hashtbl.add env ("+", [String; String]) ("+", String);
   env
 
 let assign_args args types env =
   let env' = Hashtbl.copy env in
-  iter2 (fun name t -> Hashtbl.add env' (name, []) t) args types;
+  iter2 (fun name t -> Hashtbl.add env' (name, []) (name, t)) args types;
   env'
-
-let lookup env name types =
-  (try Hashtbl.find env (name, types) with
-   | Not_found -> raise (Error ("could not find symbol " ^ name)))
-
+                                                                                 
 let rec string_of_type = function
   | Float -> "float"
   | Bool -> "bool"
@@ -29,14 +25,21 @@ let rec string_of_type = function
   | Int32 -> "int32"
   | Int -> "int"
   | Void -> "void"
+  | String -> "string"
   | Pointer t -> string_of_type t ^ "*"
   | Function (args, t) -> string_of_type t ^ "(" ^ String.concat "," (map string_of_type args) ^ ")"
   | Undefined -> "undefined"
 
+let string_of_types list = "(" ^ String.concat "," (map string_of_type list) ^ ")"
+
+let lookup env name types =
+  (try Hashtbl.find env (name, types) with
+   | Not_found -> raise (Error ("could not find symbol " ^ name ^ (string_of_types types))))
+
 let type_of = function
   | FloatLiteral _ -> Float
   | IntLiteral _ -> Int
-  | StringLiteral _ -> Pointer Byte
+  | StringLiteral _ -> String
   | Call (_, _, t) -> t
   | Let (_, _, t) -> t
   | Var (_, t) -> t
@@ -61,7 +64,7 @@ let rec typecheck env e =
      else 
        let expr' = typecheck env expr in
        let t = type_of expr' in
-       Hashtbl.add env (name, []) t;
+       Hashtbl.add env (name, []) (name, t);
        Let (name, expr', t)
 
   | Call ("[]", [array; index], _) ->
@@ -90,15 +93,15 @@ let rec typecheck env e =
   | Call (name, args, _) ->
      let args' = map (typecheck env) args in
      let arg_types = map type_of args' in
-     let ret_type = lookup env name arg_types in
-     Call (name, args', ret_type)
+     let (name', ret_type) = lookup env name arg_types in
+     Call (name', args', ret_type)
 
   | Var (name, _) ->
-     let t = lookup env name [] in
-     Var (name, t)
+     let (name', t) = lookup env name [] in
+     Var (name', t)
 
   | Fun (name, args, types, body, ret_type) ->
      let env' = assign_args args types env in
      let body' = map (typecheck env') body in
-     Hashtbl.add env (name, types) ret_type;
+     Hashtbl.add env (name, types) (name, ret_type);
      Fun (name, args, types, body', ret_type)

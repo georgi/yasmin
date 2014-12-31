@@ -19,7 +19,7 @@
     raise Parsing.Parse_error
 %}
 
-%token NEW INT BOOL BYTE FLOAT VOID NEWLINE
+%token NEW INT BOOL BYTE FLOAT STRING VOID NEWLINE
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
@@ -77,6 +77,7 @@ sequence:
 ;
 type_name:
   | BYTE                       { Byte }
+  | STRING                     { String }
   | INT                        { Int }
   | FLOAT                      { Float }
   | VOID                       { Void }

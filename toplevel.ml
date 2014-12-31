@@ -8,12 +8,12 @@ let rec main_loop m engine code_env type_env lexbuf =
 
   let print_res t res =
     let t' = Codegen.llvm_type_for t in
-    let puts = Codegen.lookup code_env "puts" [Pointer Byte] in
     match t with
     | Int32 -> print_int (GenericValue.as_int res)
     | Int -> print_int (GenericValue.as_int res)
     | Float -> print_float (GenericValue.as_float t' res)
-    | Pointer Byte ->
+    | String ->
+       let puts = Codegen.lookup code_env "puts" [String] in
        ignore (ExecutionEngine.run_function puts (Array.of_list [res]) engine)
     | _ -> print_string "..." in
 

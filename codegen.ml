@@ -1,7 +1,3 @@
-(*===----------------------------------------------------------------------===
- * Code Generation
- *===----------------------------------------------------------------------===*)
-
 open Llvm
 open List
 open Ast
@@ -15,7 +11,7 @@ let last list = nth list ((length list) - 1)
 
 let lookup env name args =
   (try Hashtbl.find env (name, args) with
-   | Not_found -> raise (Error ("unknown variable " ^ name)))
+   | Not_found -> raise (Error ("unknown variable " ^ name ^ (Types.string_of_types args))))
 
 let rec llvm_type_for = function
   | Float -> float_type context
@@ -25,21 +21,23 @@ let rec llvm_type_for = function
   | Int32 -> i32_type context
   | Int -> i64_type context
   | Void -> void_type context
+  | String -> pointer_type (i8_type context)
   | Pointer t -> pointer_type (llvm_type_for t)
   | Function (args, t) -> function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args))
   | Undefined -> void_type context
 
 let declare_extern m code_env type_env =
-  let declare ret name args =
+  let declare ret name name' args =
     let ftype = function_type (llvm_type_for ret)
                               (Array.of_list (map llvm_type_for args)) in
     let f = declare_function name ftype m in
-    Hashtbl.add type_env (name, args) ret;
+    Hashtbl.add type_env (name', args) (name, ret);
     Hashtbl.add code_env (name, args) f in
-  declare Int32 "puts" [Pointer Byte];
-  declare (Pointer Byte) "sdsnewlen" [Pointer Byte; Int32];
-  declare (Pointer Byte) "sdscatsds" [Pointer Byte; Pointer Byte];
-  declare (Pointer Byte) "sdsdup" [Pointer Byte]
+  declare Int32 "puts" "puts" [String];
+  declare String "sdsnewlen" "sdsnewlen" [String; Int32];
+  declare String "sdscatsds" "cat" [String; String];
+  declare String "sdsdup" "dup" [String];
+  declare Int32 "sdslen" "len" [String]
 
 let assign_params f args env =
   let iter i value =
@@ -58,7 +56,7 @@ let rec generate m env = function
   | StringLiteral s ->
      let init = build_global_stringptr s "str" builder in
      let args = [init; const_int (i32_type context) (String.length s)] in
-     make_call env "sdsnewlen" args [Pointer Byte; Int32]
+     make_call env "sdsnewlen" args [String; Int32]
 
   (* | ArrayLiteral (list, Array (n, t)) -> *)
   (*    let vals = map (generate m env) list in *)
@@ -78,11 +76,11 @@ let rec generate m env = function
   | Var (name, _) ->
      lookup env name []
 
-  | Call ("+", [lhs; rhs], (Pointer Byte)) ->
+  | Call ("+", [lhs; rhs], (String)) ->
      let lhs' = generate m env lhs in
      let rhs' = generate m env rhs in
-     let lhs'' = make_call env "sdsdup" [lhs'] [Pointer Byte] in
-     make_call env "sdscatsds" [lhs''; rhs'] [Pointer Byte; Pointer Byte]
+     let lhs'' = make_call env "sdsdup" [lhs'] [String] in
+     make_call env "sdscatsds" [lhs''; rhs'] [String; String]
      
   | Call ("+", [lhs; rhs], Int) ->
      build_add (generate m env lhs) (generate m env rhs) "add" builder

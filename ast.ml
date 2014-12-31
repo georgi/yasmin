@@ -6,6 +6,7 @@ type type_name =
   | Int
   | Float
   | Void
+  | String
   | Pointer of type_name
   | Function of type_name list * type_name
   | Undefined
