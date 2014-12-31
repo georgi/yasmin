@@ -1,26 +1,19 @@
 open Llvm
 open Llvm_executionengine
 
-let rec main_loop lexbuf =
-  let m = create_module Codegen.context "jit" in
-  let engine = ExecutionEngine.create_jit m 0 in
-  let type_env = Types.new_env in
-  let code_env = Codegen.new_env in
-
-  (* Codegen.declare_extern; *)
-
+let rec main_loop m engine code_env type_env lexbuf =
   let wrapper body =
     Ast.Fun ("", [], [], body, Types.type_of (Types.last body)) in
 
   let prompt = fun () ->
     print_string "ready> "; flush stdout;
-    main_loop lexbuf in
+    main_loop m engine code_env type_env lexbuf in
 
   try match Parser.toplevel Lexer.token lexbuf with
   | Ast.End -> ()
   | Ast.Sep ->
     Lexing.flush_input lexbuf;
-    main_loop lexbuf
+    main_loop m engine code_env type_env lexbuf
 
   | Ast.Expression e ->
     let e' = Types.typecheck type_env e in
@@ -36,10 +29,11 @@ let rec main_loop lexbuf =
        let f = Codegen.generate m code_env (wrapper [e']) in
        let res = ExecutionEngine.run_function f [||] engine in
 
-       dump_value f;
+       (* dump_value f; *)
 
        begin
          match t with
+         | Ast.Int32 -> print_int (GenericValue.as_int res)
          | Ast.Int -> print_int (GenericValue.as_int res)
          | Ast.Float -> print_float (GenericValue.as_float (Codegen.llvm_type_for t) res);
          | _ -> print_endline "unknown type"

@@ -4,32 +4,40 @@
 
 open Llvm
 open List
+open Ast
 
 exception Error of string
 
 let context = global_context ()
 let builder = builder context
-let kind_of t = classify_type (type_of t)
 let new_env:(string, llvalue) Hashtbl.t = Hashtbl.create 10
 let last list = nth list ((length list) - 1)
-
-(* let declare_extern = *)
-(*   let malloc_type = function_type (pointer_type (i8_type context)) (Array.of_list [i32_type context]) in *)
-(*   declare_function "malloc" malloc_type the_module *)
 
 let lookup env name =
   (try Hashtbl.find env name with
    | Not_found -> raise (Error ("unknown variable " ^ name)))
 
 let rec llvm_type_for = function
-  | Ast.Float -> float_type context
-  | Ast.Bool -> i1_type context
-  | Ast.Byte -> i8_type context
-  | Ast.Int -> i64_type context
-  | Ast.Void -> void_type context
-  | Ast.Pointer t -> pointer_type (llvm_type_for t)
-  | Ast.Function (args, t) -> function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args))
-  | Ast.Undefined -> void_type context
+  | Float -> float_type context
+  | Bool -> i1_type context
+  | Byte -> i8_type context
+  | Int16 -> i16_type context
+  | Int32 -> i32_type context
+  | Int -> i64_type context
+  | Void -> void_type context
+  | Pointer t -> pointer_type (llvm_type_for t)
+  | Function (args, t) -> function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args))
+  | Undefined -> void_type context
+
+let declare_extern m code_env type_env =
+  let declare ret name args =
+    let ftype = function_type (llvm_type_for ret)
+                              (Array.of_list (map llvm_type_for args)) in
+    let f = declare_function name ftype m in
+    Hashtbl.add type_env (name, args) ret;
+    Hashtbl.add code_env name f in
+  declare Int32 "puts" [Pointer Byte];
+  declare (Pointer Byte) "sdsnewlen" [Pointer Byte; Int32]
 
 let assign_params f args env =
   let iter i value =
@@ -38,20 +46,28 @@ let assign_params f args env =
     Hashtbl.add env name value in
   Array.iteri iter (params f)
 
-let rec generate m env = function
-  | Ast.FloatLiteral n -> const_float (double_type context) n
-  | Ast.IntLiteral n -> const_int (i64_type context) n
+let make_call env name args =
+  let callee = lookup env name in
+  build_call callee (Array.of_list args) "call" builder
 
-  (* | Ast.ArrayLiteral (list, Ast.Array (n, t)) -> *)
+let rec generate m env = function
+  | FloatLiteral n -> const_float (double_type context) n
+  | IntLiteral n -> const_int (i64_type context) n
+  | StringLiteral s ->
+     let init = build_global_stringptr s "str" builder in
+     let args = [init; const_int (i32_type context) (String.length s)] in
+     make_call env "sdsnewlen" args
+
+  (* | ArrayLiteral (list, Array (n, t)) -> *)
   (*    let vals = map (generate m env) list in *)
   (*    const_array (llvm_type_for t) (Array.of_list vals) *)
                                   
-  | Ast.New (expr, t) ->
-     let expr' = generate m env expr in
+  | New (size, t) ->
+     let size' = generate m env size in
      let ltype = llvm_type_for t in
-     build_array_malloc ltype expr' "malloc" builder
+     build_array_malloc ltype size' "malloc" builder
 
-  | Ast.Let (t, name, expr, body, t') ->
+  | Let (t, name, expr, body, t') ->
      let value = generate m env expr in
      let env' = Hashtbl.copy env in
      Hashtbl.add env' name value;
@@ -59,34 +75,33 @@ let rec generate m env = function
      let body' = map (generate m env') body in
      last body'
      
-  | Ast.Var (name, _) ->
+  | Var (name, _) ->
      lookup env name
      
-  | Ast.Call ("+", [lhs; rhs], Ast.Int) ->
+  | Call ("+", [lhs; rhs], Int) ->
      build_add (generate m env lhs) (generate m env rhs) "add" builder
 
-  | Ast.Call ("+", [lhs; rhs], Ast.Float) ->
+  | Call ("+", [lhs; rhs], Float) ->
      build_fadd (generate m env lhs) (generate m env rhs) "add" builder
                 
-  | Ast.Call ("[]", [array; index], _) ->
+  | Call ("[]", [array; index], _) ->
      let array' = generate m env array in
      let index' = Array.of_list [(generate m env index)] in
      let ptr = build_gep array' index' "ary" builder in
      build_load ptr "ptr" builder
 
-  | Ast.Call ("[]=", [array; index; expr], _) ->
+  | Call ("[]=", [array; index; expr], _) ->
      let expr' = generate m env expr in
      let array' = generate m env array in
      let index' = Array.of_list [(generate m env index)] in
      let ptr = build_gep array' index' "ary" builder in
      build_store expr' ptr builder
 
-  | Ast.Call (name, args, ret_type) ->
-     let callee = lookup env name in
+  | Call (name, args, _) ->
      let args' = map (generate m env) args in
-     build_call callee (Array.of_list args') "call" builder
+     make_call env name args'
 
-  | Ast.Fun (name, args, types, body, ret_type) ->
+  | Fun (name, args, types, body, ret_type) ->
      let env' = Hashtbl.copy env in
      let types' = map llvm_type_for types in
      let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in

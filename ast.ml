@@ -1,6 +1,8 @@
 type type_name =
   | Bool
   | Byte
+  | Int16
+  | Int32
   | Int
   | Float
   | Void
@@ -11,6 +13,7 @@ type type_name =
 type expr =
   | FloatLiteral of float
   | IntLiteral of int
+  | StringLiteral of string
   | New of expr * type_name
   | Let of type_name * string * expr * expr list * type_name
   | Var of string * type_name

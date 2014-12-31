@@ -1,11 +1,11 @@
-(*===----------------------------------------------------------------------===
- * Lexer
- *===----------------------------------------------------------------------===*)
 {
   open Parser
 }
+
 let letter = ['a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
+let quote = '"'
+
 rule token = parse
   (* Skip any whitespace. *)
   | [' ' '\t']                            { token lexbuf }
@@ -23,6 +23,7 @@ rule token = parse
 
   (* identifier: [a-zA-Z][a-zA-Z0-9]* *)
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
+  | quote ( [^ '\n']* ) quote as lxm      { STRING_LITERAL(String.sub lxm 1 ((String.length lxm) - 2)) }
 
   (* number: [0-9.]+ *)
   | ( digit* ) as lxm                     { INT_LITERAL(int_of_string lxm) }

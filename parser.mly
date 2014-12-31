@@ -21,6 +21,7 @@
 
 %token NEW IN EXTERN INT BOOL BYTE FLOAT VOID
 %token <string> IDENT
+%token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
 %token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
@@ -38,6 +39,7 @@
 expr:
   | FLOAT_LITERAL                             { FloatLiteral $1 }
   | INT_LITERAL                               { IntLiteral $1 }
+  | STRING_LITERAL                            { StringLiteral $1 }
 
   | LPAREN expr RPAREN                        { $2 }
   | LPAREN expr                               { parse_error "expected ')'" }
@@ -98,4 +100,5 @@ params:
 ;
 toplevel:
   | expr SEMICOLON             { Expression $1 }
+  | expr EOS                   { Expression $1 }
 ;
