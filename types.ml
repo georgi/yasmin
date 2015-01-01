@@ -5,12 +5,10 @@ exception Error of string
 
 let last list = nth list ((length list) - 1)
 
-let new_env =
-  let env:((string * type_name list), (string * type_name)) Hashtbl.t = Hashtbl.create 10 in
+let init_env env =
   Hashtbl.add env ("+", [Int; Int]) ("+", Int);
   Hashtbl.add env ("+", [Float; Float]) ("+", Float);
-  Hashtbl.add env ("+", [String; String]) ("+", String);
-  env
+  Hashtbl.add env ("+", [String; String]) ("+", String)
 
 let assign_args args types env =
   let env' = Hashtbl.copy env in

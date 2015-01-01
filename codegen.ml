@@ -6,7 +6,6 @@ exception Error of string
 
 let context = global_context ()
 let builder = builder context
-let new_env:(string * type_name list, llvalue) Hashtbl.t = Hashtbl.create 10
 let last list = nth list ((length list) - 1)
 
 let lookup env name args =
@@ -21,7 +20,7 @@ let rec llvm_type_for = function
   | Int32 -> i32_type context
   | Int -> i64_type context
   | Void -> void_type context
-  | String -> pointer_type (i8_type context)
+  | String -> pointer_type (struct_type context (Array.of_list [i32_type context; pointer_type (i8_type context)]))
   | Pointer t -> pointer_type (llvm_type_for t)
   | Function (args, t) -> function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args))
   | Undefined -> void_type context
@@ -33,12 +32,10 @@ let declare_extern m code_env type_env =
     let f = declare_function name ftype m in
     Hashtbl.add type_env (name', args) (name, ret);
     Hashtbl.add code_env (name, args) f in
-  declare Int32 "puts" "puts" [String];
-  declare String "sdsnewlen" "sdsnewlen" [String; Int32];
-  declare String "sdscatsds" "cat" [String; String];
-  declare String "sdsdup" "dup" [String];
-  declare Int32 "sdslen" "len" [String];
-  declare Void "sdsfree" "free" [String]
+  declare Void "string_puts" "puts" [String];
+  declare String "string_new" "string_new" [Pointer Byte; Int32];
+  declare Int32 "string_len" "len" [String];
+  declare Void "free" "free" [String]
 
 let assign_params f args env =
   let iter i value =
@@ -57,7 +54,7 @@ let rec generate m env = function
   | StringLiteral s ->
      let init = build_global_stringptr s "str" builder in
      let args = [init; const_int (i32_type context) (String.length s)] in
-     make_call env "sdsnewlen" args [String; Int32]
+     make_call env "string_new" args [Pointer Byte; Int32]
 
   (* | ArrayLiteral (list, Array (n, t)) -> *)
   (*    let vals = map (generate m env) list in *)

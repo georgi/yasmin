@@ -100,8 +100,7 @@ params:
   | expr                       { [$1] }
 ;
 toplevel:
-  | sequence SEMICOLON         { Expression $1 }
-  | SEMICOLON                  { Sep }
+  | sequence NEWLINE     { Expression $1 }
   | NEWLINE                    { Sep }
   | EOS                        { End }
 ;
