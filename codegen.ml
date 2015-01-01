@@ -34,7 +34,7 @@ let declare_extern m code_env type_env =
     Hashtbl.add code_env (name, args) f in
   declare Void "string_puts" "puts" [String];
   declare String "string_new" "string_new" [Pointer Byte; Int32];
-  declare Int32 "string_len" "len" [String];
+  declare String "string_add" "+" [String; String];
   declare Void "free" "free" [String]
 
 let assign_params f args env =
@@ -74,12 +74,6 @@ let rec generate m env = function
   | Var (name, _) ->
      lookup env name []
 
-  | Call ("+", [lhs; rhs], (String)) ->
-     let lhs' = generate m env lhs in
-     let rhs' = generate m env rhs in
-     let lhs'' = make_call env "sdsdup" [lhs'] [String] in
-     make_call env "sdscatsds" [lhs''; rhs'] [String; String]
-     
   | Call ("+", [lhs; rhs], Int) ->
      build_add (generate m env lhs) (generate m env rhs) "add" builder
 
