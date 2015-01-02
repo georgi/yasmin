@@ -19,16 +19,18 @@
     raise Parsing.Parse_error
 %}
 
-%token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID NEWLINE
+%token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID DEF NEWLINE
+%token IF THEN ELSE END
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
 %token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
 %token COMMA SEMICOLON COLON EQUALS DOT
+%token LESSTHAN GREATERTHAN BANG 
 %token EOS
 %token UNKNOWN
-%token PLUS MINUS TIMES
+%token PLUS MINUS TIMES DIV
 
 %left TIMES
 
@@ -52,6 +54,13 @@ expr:
   | expr PLUS expr                            { Call ("+", [$1; $3], Undefined) }
   | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
   | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
+  | expr DIV expr                             { Call ("/", [$1; $3], Undefined) }
+  | expr EQUALS EQUALS expr                   { Call ("==", [$1; $4], Undefined) }
+  | expr BANG EQUALS expr                     { Call ("!=", [$1; $4], Undefined) }
+  | expr LESSTHAN expr                        { Call ("<", [$1; $3], Undefined) }
+  | expr GREATERTHAN expr                     { Call (">", [$1; $3], Undefined) }
+  | expr LESSTHAN EQUALS expr                 { Call ("<=", [$1; $4], Undefined) }
+  | expr GREATERTHAN EQUALS expr              { Call (">=", [$1; $4], Undefined) }
 
   | expr DOT IDENT                            { Mem ($1, $3, Undefined) }
   | expr DOT IDENT EQUALS expr                { MemSet ($1, $3, $5, Undefined) }
@@ -61,19 +70,13 @@ expr:
   | NEW type_name                             { New (IntLiteral 1, $2) }
   | NEW type_name LBRACK expr RBRACK          { New ($4, $2) }
 
-  | fun_def                                   { $1 }
-  | struct_def                                { $1 }
   | struct_literal                            { $1 }
+  | if_then_else                              { $1 }
 
   | UNKNOWN { parse_error "unknown token when expecting an expression." }
 ;
-
-fun_def:
-  | type_name IDENT args_parens LCURLY sequence RCURLY
-      { Fun($2, List.map snd $3, List.map fst $3, $5, $1) }
-;
-struct_def:
-  | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }
+if_then_else:
+  | IF expr THEN sequence ELSE sequence END { If ($2, $4, $6, Undefined) }
 ;
 member:
   | type_name IDENT            { ($2, $1) }
@@ -100,6 +103,7 @@ array:
 sequence:
   | expr NEWLINE sequence      { $1 :: $3 }    
   | expr NEWLINE               { [$1] }    
+  | expr                       { [$1] }    
 ;
 type_name:
   | BYTE                       { Byte }
@@ -126,8 +130,16 @@ params:
   | expr COMMA params          { $1 :: $3 }
   | expr                       { [$1] }
 ;
+fun_def:
+  | DEF IDENT args_parens NEWLINE sequence END { FunDef ($2, List.map snd $3, List.map fst $3, $5) }
+;
+struct_def:
+  | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }
+;
 toplevel:
-  | sequence NEWLINE           { Expression $1 }
-  | NEWLINE                    { Sep }
-  | EOS                        { End }
+  | sequence NEWLINE                         { Expression $1 }
+  | fun_def NEWLINE                          { $1 }
+  | struct_def NEWLINE                       { $1 }
+  | NEWLINE                                  { Sep }
+  | EOS                                      { End }
 ;

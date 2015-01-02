@@ -39,12 +39,26 @@ let rec llvm_type_for = function
   | Undefined -> void_type context
 
 let init_env env =
-  Hashtbl.add env ("+", [Int; Int]) ("+", Int);
-  Hashtbl.add env ("to_i", [Float]) ("ftoi", Int);
-  Hashtbl.add env ("to_f", [Int]) ("itof", Float);
-  Hashtbl.add env ("+", [Float; Float]) ("+", Float);
-  Hashtbl.add env ("-", [Int; Int]) ("-", Int);
-  Hashtbl.add env ("-", [Float; Float]) ("-", Float);
+  Hashtbl.add env ("to_i", [Float]) ("__ftoi__", Int);
+  Hashtbl.add env ("to_f", [Int]) ("__itof__", Float);
+  Hashtbl.add env ("==", [Float; Float]) (":fcmp_eq", Bool);
+  Hashtbl.add env ("!=", [Float; Float]) (":fcmp_ne", Bool);
+  Hashtbl.add env ("<", [Float; Float]) (":fcmp_lt", Bool);
+  Hashtbl.add env (">", [Float; Float]) (":fcmp_gt", Bool);
+  Hashtbl.add env ("<=", [Float; Float]) (":fcmp_le", Bool);
+  Hashtbl.add env (">=", [Float; Float]) (":fcmp_ge", Bool);
+  Hashtbl.add env ("==", [Int; Int]) (":icmp_eq", Bool);
+  Hashtbl.add env ("!=", [Int; Int]) (":icmp_ne", Bool);
+  Hashtbl.add env ("<", [Int; Int]) (":icmp_lt", Bool);
+  Hashtbl.add env (">", [Int; Int]) (":icmp_gt", Bool);
+  Hashtbl.add env ("<=", [Int; Int]) (":icmp_le", Bool);
+  Hashtbl.add env (">=", [Int; Int]) (":icmp_ge", Bool);
+  Hashtbl.add env ("+", [Int; Int]) (":add", Int);
+  Hashtbl.add env ("-", [Int; Int]) (":sub", Int);
+  Hashtbl.add env ("*", [Int; Int]) (":mul", Int);
+  Hashtbl.add env ("+", [Float; Float]) (":fadd", Float);
+  Hashtbl.add env ("-", [Float; Float]) (":fsub", Float);
+  Hashtbl.add env ("*", [Float; Float]) (":fmul", Float);
   Hashtbl.add env ("+", [String; String]) ("+", String)
 
 let declare_extern m code_env type_env =
@@ -77,8 +91,32 @@ let make_ret ret_type ret =
   | Void -> build_ret_void builder
   | _ -> build_ret ret builder
 
-let rec generate m env = function
-  | StructDef (_, _) -> const_int (i32_type context) 0
+let binop_builder = function
+  | ":add" -> build_add
+  | ":sub" -> build_sub
+  | ":mul" -> build_mul
+  | ":div" -> build_sdiv
+  | ":fadd" -> build_fadd
+  | ":fsub" -> build_fsub
+  | ":fmul" -> build_fmul
+  | ":fdiv" -> build_fdiv
+  | ":fcmp_eq" -> build_fcmp Fcmp.Oeq
+  | ":fcmp_ne" -> build_fcmp Fcmp.One
+  | ":fcmp_lt" -> build_fcmp Fcmp.Olt
+  | ":fcmp_gt" -> build_fcmp Fcmp.Ogt
+  | ":fcmp_le" -> build_fcmp Fcmp.Ole
+  | ":fcmp_ge" -> build_fcmp Fcmp.Oge
+  | ":icmp_ne" -> build_icmp Icmp.Ne
+  | ":icmp_eq" -> build_icmp Icmp.Eq
+  | ":icmp_lt" -> build_icmp Icmp.Slt
+  | ":icmp_gt" -> build_icmp Icmp.Sgt
+  | ":icmp_le" -> build_icmp Icmp.Sle
+  | ":icmp_ge" -> build_icmp Icmp.Sge
+  | _ -> raise (Error "unknown binary operator")
+
+let rec generate func _module env expr =
+  let gen = generate func _module env in
+  match expr with
   | FloatLiteral n -> const_float (float_type context) n
   | IntLiteral n -> const_int (i64_type context) n
   | StringLiteral s ->
@@ -90,9 +128,8 @@ let rec generate m env = function
      let struct_type = struct_type_for (map llvm_type_for (map snd member_types)) in
      let struct_val = build_malloc struct_type "struct" builder in
      let build_member i (_, e) =
-       let v = generate m env e in
        let p = build_struct_gep struct_val i "" builder in
-       let _ = build_store v p builder in
+       let _ = build_store (gen e) p builder in
        () in
      iteri build_member members;
      struct_val
@@ -104,12 +141,12 @@ let rec generate m env = function
   (*    const_array (llvm_type_for t) (Array.of_list vals) *)
 
   | New (size, t) ->
-     let size' = generate m env size in
+     let size' = gen size in
      let ltype = llvm_type_for t in
      build_array_malloc ltype size' "malloc" builder
 
   | Let (name, expr, t) ->
-     let value = generate m env expr in
+     let value = gen expr in
      Hashtbl.add env (name, []) value;
      set_value_name name value;
      value
@@ -117,26 +154,8 @@ let rec generate m env = function
   | Var (name, _) ->
      lookup env name []
 
-  | Call ("+", [lhs; rhs], Int) ->
-     build_add (generate m env lhs) (generate m env rhs) "add" builder
-
-  | Call ("+", [lhs; rhs], Float) ->
-     build_fadd (generate m env lhs) (generate m env rhs) "add" builder
-
-  | Call ("-", [lhs; rhs], Int) ->
-     build_sub (generate m env lhs) (generate m env rhs) "sub" builder
-
-  | Call ("-", [lhs; rhs], Float) ->
-     build_fsub (generate m env lhs) (generate m env rhs) "sub" builder
-
-  | Call ("ftoi", [expr], _) ->
-     build_fptosi (generate m env expr) (i64_type context) "" builder
-                
-  | Call ("itof", [expr], _) ->
-     build_sitofp (generate m env expr) (float_type context) "" builder
-
   | Mem (expr, name, _) ->
-     let expr' = generate m env expr in
+     let expr' = gen expr in
      begin
        match Types.type_of expr with
        | Struct members ->
@@ -146,8 +165,8 @@ let rec generate m env = function
      end
 
   | MemSet (lhs, name, rhs, _) ->
-     let lhs' = generate m env lhs in
-     let rhs' = generate m env rhs in
+     let lhs' = gen lhs in
+     let rhs' = gen rhs in
      begin
        match Types.type_of lhs with
        | Struct members ->
@@ -155,41 +174,68 @@ let rec generate m env = function
           build_store rhs' ptr builder
        | _ -> raise (Error "no struct type")
      end
-                                  
+                
+  | Call ("__itof__", [expr], _) ->
+     build_sitofp (gen expr) (float_type context) "" builder
+
+  | Call ("__ftoi__", [expr], _) ->
+     build_fptosi (gen expr) (i64_type context) "" builder
+
   | Call ("[]", [array; index], _) ->
-     let array' = generate m env array in
-     let index' = Array.of_list [(generate m env index)] in
+     let array' = gen array in
+     let index' = Array.of_list [(gen index)] in
      let ptr = build_gep array' index' "ary" builder in
      build_load ptr "ptr" builder
 
   | Call ("[]=", [array; index; expr], _) ->
-     let expr' = generate m env expr in
-     let array' = generate m env array in
-     let index' = Array.of_list [(generate m env index)] in
-     let ptr = build_gep array' index' "ary" builder in
-     build_store expr' ptr builder
+     let index' = Array.of_list [gen index] in
+     let ptr = build_gep (gen array) index' "ary" builder in
+     build_store (gen expr) ptr builder
 
   | Call (name, args, _) ->
-     let args' = map (generate m env) args in
-     let arg_types = map Types.type_of args in
-     make_call env name args' arg_types
+     if String.contains name ':' then
+       let f = binop_builder name in
+       match args with
+       | [lhs; rhs] -> f (gen lhs) (gen rhs) "" builder
+       | _ -> raise (Error "binop with wrong arg count")
+     else
+       let args' = map gen args in
+       let arg_types = map Types.type_of args in
+       make_call env name args' arg_types
 
-  | Fun (name, args, types, body, ret_type) ->
-     let env' = Hashtbl.copy env in
-     let types' = map llvm_type_for types in
-     let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
-     let func = declare_function name fun_type m in
-     let block = append_block context "entry" func in
+  | If (cond, then_clause, else_clause, t) ->
+     let result = build_alloca (llvm_type_for t) "res" builder in
+     let then_block = append_block context "then" func in
+     let else_block = append_block context "else" func in
+     let exit_block = append_block context "exit" func in
+     let _ = build_cond_br (gen cond) then_block else_block builder in
+     position_at_end then_block builder;
+     let then_result = last (map gen then_clause) in
+     let _ = build_store then_result result builder in
+     let _ = build_br exit_block builder in
+     position_at_end else_block builder;
+     let else_result = last (map gen else_clause) in
+     let _ = build_store else_result result builder in
+     let _ = build_br exit_block builder in
+     position_at_end exit_block builder;
+     build_load result "res" builder
 
-     Hashtbl.add env (name, types) func;
-     assign_params func args env';
-     position_at_end block builder;
+let generate_function m env name args types body ret_type =
+  let env' = Hashtbl.copy env in
+  let types' = map llvm_type_for types in
+  let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
+  let func = declare_function name fun_type m in
+  let block = append_block context "entry" func in
 
-     try
-       let body' = map (generate m env') body in
-       let _ = make_ret (Types.type_of (last body)) (last body') in
-       Llvm_analysis.assert_valid_function func;
-       func
-     with e ->
-       delete_function func;
-       raise e
+  Hashtbl.add env (name, types) func;
+  assign_params func args env';
+  position_at_end block builder;
+
+  try
+    let body' = map (generate func m env') body in
+    let _ = make_ret (Types.type_of (last body)) (last body') in
+    Llvm_analysis.assert_valid_function func;
+    func
+  with e ->
+    delete_function func;
+    raise e

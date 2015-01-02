@@ -43,15 +43,14 @@ let type_of = function
   | FloatLiteral _ -> Float
   | IntLiteral _ -> Int
   | StringLiteral _ -> String
-  | StructDef (_, _) -> Void
   | StructLiteral (_, t) -> resolve t
   | Call (_, _, t) -> resolve t
   | Let (_, _, t) -> resolve t
+  | If (_, _, _, t) -> resolve t
   | Var (_, t) -> resolve t
   | Mem (_, _, t) -> resolve t
   | MemSet (_, _, _, t) -> resolve t
   | New (_, t) -> Pointer (resolve t)
-  | Fun (_, _, _, _, t) -> resolve t
 
 let rec typecheck env e =
   match e with
@@ -63,12 +62,6 @@ let rec typecheck env e =
      let members'' = map (fun (n, rhs) -> (n, typecheck env rhs)) members' in
      let members''' = map (fun (n, rhs) -> (n, type_of rhs)) members'' in
      StructLiteral (members'', Struct members''')
-     
-  | StructDef (name, members) ->
-     let members' = sort (fun a b -> compare (fst a) (fst b)) members in
-     let members'' = map (fun (n, t) -> (n, resolve t)) members' in
-     Hashtbl.add type_map name (Struct members'');
-     StructDef (name, members')
 
   | Mem (expr, name, _) ->
      let expr' = typecheck env expr in
@@ -135,12 +128,28 @@ let rec typecheck env e =
      let (name', ret_type) = lookup env name arg_types in
      Call (name', args', ret_type)
 
+  | If (cond, then_clause, else_clause, _) ->
+     let cond' = typecheck env cond in
+     let then_clause' = map (typecheck env) then_clause in
+     let else_clause' = map (typecheck env) else_clause in
+     if type_of cond' = Bool then
+       if type_of (last then_clause') = type_of (last else_clause) then
+         If (cond', then_clause', else_clause', type_of (last then_clause'))
+       else raise (Error "then clause has not same type as else clause")
+     else raise (Error "condition is not a bool")
+     
   | Var (name, _) ->
      let (name', t) = lookup env name [] in
      Var (name', t)
+         
+let define_struct name members =          
+  let members' = sort (fun a b -> compare (fst a) (fst b)) members in
+  let members'' = map (fun (n, t) -> (n, resolve t)) members' in
+  Hashtbl.add type_map name (Struct members'')
 
-  | Fun (name, args, types, body, ret_type) ->
-     let env' = assign_args args types env in
-     let body' = map (typecheck env') body in
-     Hashtbl.add env (name, types) (name, ret_type);
-     Fun (name, args, types, body', resolve ret_type)
+let define_function env name args types body =
+  let env' = assign_args args types env in
+  let body' = map (typecheck env') body in
+  let ret_type = type_of (last body') in
+  Hashtbl.add env (name, types) (name, ret_type);
+  (ret_type, body')

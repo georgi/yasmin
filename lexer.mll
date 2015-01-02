@@ -17,6 +17,11 @@ rule token = parse
   | "float"                               { FLOAT }
   | "void"                                { VOID }
   | "new"                                 { NEW }
+  | "if"                                  { IF }
+  | "then"                                { THEN }
+  | "else"                                { ELSE }
+  | "end"                                 { END }
+  | "def"                                 { DEF }
 
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
   | '"' ( [^ '"' '\n']* ) '"' as lxm      { STRING_LITERAL(String.sub lxm 1 ((String.length lxm) - 2)) }
@@ -36,10 +41,13 @@ rule token = parse
   | '.'                                   { DOT }
   | ':'                                   { COLON }
   | '='                                   { EQUALS }
-
+  | '<'                                   { LESSTHAN }
+  | '>'                                   { GREATERTHAN }
+  | '!'                                   { BANG }
   | '+'                                   { PLUS }
   | '-'                                   { MINUS }
   | '*'                                   { TIMES }
+  | '/'                                   { DIV }
 
   | eof                                   { EOS }
   | _                                     { UNKNOWN }
