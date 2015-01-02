@@ -24,7 +24,7 @@ let rec main_loop m engine lexbuf =
        false
     | _ -> true in
 
-  Types.init_env type_env;
+  Codegen.init_env type_env;
   Codegen.declare_extern m code_env type_env;
 
   try match Parser.toplevel Lexer.token lexbuf with
@@ -40,6 +40,7 @@ let rec main_loop m engine lexbuf =
          let wrap = Fun ("", [], [], body, t) in
          let f = Codegen.generate m code_env wrap in
          let res = ExecutionEngine.run_function f [||] engine in
+         (* dump_value f; flush stdout; *)
          print_string ("=> " ^ (Types.string_of_type t) ^ ": "); flush stdout;
          print_res t res;
          print_endline "";

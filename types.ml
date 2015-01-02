@@ -4,11 +4,7 @@ open Ast
 exception Error of string
 
 let last list = nth list ((length list) - 1)
-
-let init_env env =
-  Hashtbl.add env ("+", [Int; Int]) ("+", Int);
-  Hashtbl.add env ("+", [Float; Float]) ("+", Float);
-  Hashtbl.add env ("+", [String; String]) ("+", String)
+let type_map:(string, type_name) Hashtbl.t = Hashtbl.create 10
 
 let assign_args args types env =
   let env' = Hashtbl.copy env in
@@ -17,6 +13,7 @@ let assign_args args types env =
                                                                                  
 let rec string_of_type = function
   | Float -> "float"
+  | Double -> "double"
   | Bool -> "bool"
   | Byte -> "byte"
   | Int16 -> "int16"
@@ -24,6 +21,8 @@ let rec string_of_type = function
   | Int -> "int"
   | Void -> "void"
   | String -> "string"
+  | TypeRef name -> name
+  | Struct members -> "struct (" ^ String.concat "," (map (fun (name, t) -> (string_of_type t) ^ " " ^ name) members) ^ ")"
   | Pointer t -> string_of_type t ^ "*"
   | Function (args, t) -> string_of_type t ^ "(" ^ String.concat "," (map string_of_type args) ^ ")"
   | Undefined -> "undefined"
@@ -34,26 +33,68 @@ let lookup env name types =
   (try Hashtbl.find env (name, types) with
    | Not_found -> raise (Error ("could not find symbol " ^ name ^ (string_of_types types))))
 
+let resolve = function
+  | TypeRef name -> 
+     (try Hashtbl.find type_map name with
+      | Not_found -> raise (Error ("could not find type " ^ name)))
+  | _ as t -> t
+
 let type_of = function
   | FloatLiteral _ -> Float
   | IntLiteral _ -> Int
   | StringLiteral _ -> String
-  | Call (_, _, t) -> t
-  | Let (_, _, t) -> t
-  | Var (_, t) -> t
-  | New (_, t) -> Pointer t
-  | Fun (_, _, _, _, t) -> t
+  | StructDef (_, _) -> Void
+  | StructLiteral (_, t) -> resolve t
+  | Call (_, _, t) -> resolve t
+  | Let (_, _, t) -> resolve t
+  | Var (_, t) -> resolve t
+  | Mem (_, _, t) -> resolve t
+  | MemSet (_, _, _, t) -> resolve t
+  | New (_, t) -> Pointer (resolve t)
+  | Fun (_, _, _, _, t) -> resolve t
 
 let rec typecheck env e =
   match e with
   | FloatLiteral n -> e
   | IntLiteral n -> e
   | StringLiteral s -> e
-                            
+  | StructLiteral (members, _) ->
+     let members' = sort (fun a b -> compare (fst a) (fst b)) members in
+     let members'' = map (fun (n, rhs) -> (n, typecheck env rhs)) members' in
+     let members''' = map (fun (n, rhs) -> (n, type_of rhs)) members'' in
+     StructLiteral (members'', Struct members''')
+     
+  | StructDef (name, members) ->
+     let members' = sort (fun a b -> compare (fst a) (fst b)) members in
+     let members'' = map (fun (n, t) -> (n, resolve t)) members' in
+     Hashtbl.add type_map name (Struct members'');
+     StructDef (name, members')
+
+  | Mem (expr, name, _) ->
+     let expr' = typecheck env expr in
+     begin
+       match type_of expr' with
+       | Struct members ->
+          let t = assoc name members in
+          Mem (expr', name, resolve t)
+       | _ -> raise (Error "no struct type")
+     end
+
+  | MemSet (lhs, name, rhs, _) ->
+     let lhs' = typecheck env lhs in
+     let rhs' = typecheck env rhs in
+     begin
+       match type_of lhs' with
+       | Struct members ->
+          let t = assoc name members in
+          MemSet (lhs', name, rhs', resolve t)
+       | _ -> raise (Error "no struct type")
+     end
+     
   | New (expr, t) -> 
      let expr' = typecheck env expr in
      if type_of expr' = Int then
-       New(expr', t)
+       New(expr', resolve t)
      else raise (Error "new size must be int")
 
   | Let (name, expr, _) ->
@@ -102,4 +143,4 @@ let rec typecheck env e =
      let env' = assign_args args types env in
      let body' = map (typecheck env') body in
      Hashtbl.add env (name, types) (name, ret_type);
-     Fun (name, args, types, body', ret_type)
+     Fun (name, args, types, body', resolve ret_type)

@@ -2,13 +2,14 @@
   open Parser
 }
 
-let letter = ['a'-'z' 'A'-'Z']
+let letter = ['_' 'a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
 
 rule token = parse
   | [' ' '\t']                            { token lexbuf }
-  | ['\n' '\r' ]                          { NEWLINE }
+  | ['\n' '\r' ';']                       { NEWLINE }
       
+  | "struct"                              { STRUCT }
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
   | "string"                              { STRING }
@@ -32,8 +33,8 @@ rule token = parse
   | '['                                   { LBRACK }
   | ']'                                   { RBRACK }
   | ','                                   { COMMA }
+  | '.'                                   { DOT }
   | ':'                                   { COLON }
-  | ';'                                   { SEMICOLON }
   | '='                                   { EQUALS }
 
   | '+'                                   { PLUS }

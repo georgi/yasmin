@@ -19,13 +19,13 @@
     raise Parsing.Parse_error
 %}
 
-%token NEW INT BOOL BYTE FLOAT STRING VOID NEWLINE
+%token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID NEWLINE
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
 %token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
-%token COMMA SEMICOLON COLON EQUALS
+%token COMMA SEMICOLON COLON EQUALS DOT
 %token EOS
 %token UNKNOWN
 %token PLUS MINUS TIMES
@@ -53,12 +53,17 @@ expr:
   | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
   | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
 
+  | expr DOT IDENT                            { Mem ($1, $3, Undefined) }
+  | expr DOT IDENT EQUALS expr                { MemSet ($1, $3, $5, Undefined) }
+
   | IDENT EQUALS expr                         { Let ($1, $3, Undefined) }
 
   | NEW type_name                             { New (IntLiteral 1, $2) }
   | NEW type_name LBRACK expr RBRACK          { New ($4, $2) }
 
   | fun_def                                   { $1 }
+  | struct_def                                { $1 }
+  | struct_literal                            { $1 }
 
   | UNKNOWN { parse_error "unknown token when expecting an expression." }
 ;
@@ -66,6 +71,27 @@ expr:
 fun_def:
   | type_name IDENT args_parens LCURLY sequence RCURLY
       { Fun($2, List.map snd $3, List.map fst $3, $5, $1) }
+;
+struct_def:
+  | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }
+;
+member:
+  | type_name IDENT            { ($2, $1) }
+;
+members:
+  | member NEWLINE members     { $1 :: $3 }
+  | member NEWLINE             { [$1] }
+;
+struct_literal:
+  | LCURLY lmembers RCURLY     { StructLiteral ($2, Undefined) }
+;
+lmember:
+  | IDENT COLON expr           { ($1, $3) }
+;
+lmembers:
+  | lmember NEWLINE lmembers   { $1 :: $3 }
+  | lmember NEWLINE            { [$1] }
+  | lmember                    { [$1] }
 ;
 array:
   | expr COMMA array           { $1 :: $3 }
@@ -81,6 +107,7 @@ type_name:
   | INT                        { Int }
   | FLOAT                      { Float }
   | VOID                       { Void }
+  | IDENT                      { TypeRef $1 }
   | type_name TIMES            { Pointer $1 }    
 ;
 args_parens:
@@ -100,7 +127,7 @@ params:
   | expr                       { [$1] }
 ;
 toplevel:
-  | sequence NEWLINE     { Expression $1 }
+  | sequence NEWLINE           { Expression $1 }
   | NEWLINE                    { Sep }
   | EOS                        { End }
 ;
