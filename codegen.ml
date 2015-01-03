@@ -13,7 +13,7 @@ let lookup_function env name args =
    | Not_found -> raise (Error ("unknown function " ^ name ^ (Types.string_of_types args))))
 
 let lookup_variable env name =
-  (try Hashtbl.find env name with
+  (try assoc name env with
    | Not_found -> raise (Error ("unknown variable " ^ name)))
 
 let struct_type_for llvm_types =
@@ -84,14 +84,12 @@ let init_functions m fun_values fun_types =
   declare_extern "to_i" "string_to_int" Int [String];
   declare_extern "to_f" "string_to_float" Float [String]
 
-let var_env func args =
-  let env:(string, llvalue) Hashtbl.t = Hashtbl.create 10 in
-  let iter i value =
+let create_var_env func args =
+  let bind_param i value =
     let name = nth args i in
     set_value_name name value;
-    Hashtbl.add env name value in
-  Array.iteri iter (params func);
-  env
+    (name, value) in
+  Array.to_list (Array.mapi bind_param (params func))
 
 let make_call fun_values name args arg_types =
   let callee = lookup_function fun_values name arg_types in
@@ -168,11 +166,11 @@ let rec generate block _module fun_values var_env expr =
      let ltype = llvm_type_for t in
      build_array_malloc ltype size' "malloc" builder
 
-  | Let (name, expr, t) ->
+  | Let (name, expr, body, t) ->
      let value = gen expr in
-     Hashtbl.add var_env name value;
+     let var_env' = (name, value) :: var_env in
      set_value_name name value;
-     value
+     generate block _module fun_values var_env' body
      
   | Var (name, _) ->
      lookup_variable var_env name
@@ -234,28 +232,39 @@ let rec generate block _module fun_values var_env expr =
      let exit_block = append_block context "exit" func in
      let _ = build_cond_br (gen cond) then_block else_block builder in
      position_at_end then_block builder;
-     let then_result = last (map gen then_clause) in
+     let then_result = gen then_clause in
      let _ = build_store then_result result builder in
      let _ = build_br exit_block builder in
      position_at_end else_block builder;
-     let else_result = last (map gen else_clause) in
+     let else_result = gen else_clause in
      let _ = build_store else_result result builder in
      let _ = build_br exit_block builder in
      position_at_end exit_block builder;
      build_load result "res" builder
+
+  (* | Fun (args, types, body, ret_type) -> *)
+  (*    let struct_type = struct_type_for (map llvm_type_for (map snd member_types)) in *)
+  (*    let struct_val = build_malloc struct_type "struct" builder in *)
+  (*    let build_member i (_, e) = *)
+  (*      let p = build_struct_gep struct_val i "" builder in *)
+  (*      let _ = build_store (gen e) p builder in *)
+  (*      () in *)
+  (*    iteri build_member members; *)
+  (*    struct_val *)
+   
 
 let generate_function _module fun_values name args types body ret_type =
   let types' = map llvm_type_for types in
   let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
   let func = declare_function name fun_type _module in
   let block = append_block context "entry" func in
-  let var_env = var_env func args in
+  let var_env = create_var_env func args in
 
   position_at_end block builder;
 
   try
-    let body' = map (generate block _module fun_values var_env) body in
-    let _ = make_ret (Types.type_of (last body)) (last body') in
+    let body' = generate block _module fun_values var_env body in
+    let _ = make_ret (Types.type_of body) body' in
     Llvm_analysis.assert_valid_function func;
     func
   with e ->

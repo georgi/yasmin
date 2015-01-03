@@ -7,17 +7,19 @@ let digit = ['0'-'9']
 
 rule token = parse
   | [' ' '\t']                            { token lexbuf }
-  | ['\n' '\r' ';']                       { NEWLINE }
+  | ['\n' '\r']                           { token lexbuf }
       
   | "struct"                              { STRUCT }
   | "bool"                                { BOOL }
   | "byte"                                { BYTE }
   | "string"                              { STRING }
   | "int"                                 { INT }
+  | "let"                                 { LET }
   | "float"                               { FLOAT }
   | "void"                                { VOID }
   | "new"                                 { NEW }
   | "if"                                  { IF }
+  | "in"                                  { IN }
   | "then"                                { THEN }
   | "else"                                { ELSE }
   | "end"                                 { END }
@@ -45,6 +47,7 @@ rule token = parse
   | ','                                   { COMMA }
   | '.'                                   { DOT }
   | ':'                                   { COLON }
+  | ';'                                   { SEMICOLON }
   | '='                                   { EQUALS }
   | '<'                                   { LESSTHAN }
   | '>'                                   { GREATERTHAN }

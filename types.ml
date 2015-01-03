@@ -5,11 +5,12 @@ exception Error of string
 
 let last list = nth list ((length list) - 1)
 
-let var_env args types =
-  let env:(string, type_name) Hashtbl.t = Hashtbl.create 10 in
-  iter2 (fun name t -> Hashtbl.add env name t) args types;
-  env
+let create_var_env args types =
+  map2 (fun name _type -> (name, _type)) args types
                                                                                  
+let create_closure_env env args types =
+  env @ (create_var_env args types)
+  
 let rec string_of_type = function
   | Float -> "float"
   | Double -> "double"
@@ -40,7 +41,7 @@ let rec resolve type_map = function
 let string_of_types list = "(" ^ String.concat "," (map string_of_type list) ^ ")"
 
 let lookup_variable env name =
-  (try Hashtbl.find env name with
+  (try assoc name env with
    | Not_found -> raise (Error ("could not find variable " ^ name)))
 
 let lookup_function env name types =
@@ -56,7 +57,7 @@ let type_of = function
   | ArrayLiteral (_, t) -> Array t
   | StructLiteral (_, t) -> t
   | Call (_, _, t) -> t
-  | Let (_, _, t) -> t
+  | Let (_, _, _, t) -> t
   | If (_, _, _, t) -> t
   | Var (_, t) -> t
   | Mem (_, _, t) -> t
@@ -112,14 +113,15 @@ let rec typecheck type_map fun_types var_env e =
        New(expr', resolve type_map t)
      else raise (Error "new size must be int")
 
-  | Let (name, expr, _) ->
-     if Hashtbl.mem var_env name then
+  | Let (name, expr, body, _) ->
+     if mem_assoc name var_env then
        raise (Error ("reassigned variable " ^ name))
      else 
        let expr' = check expr in
-       let t = resolve type_map (type_of expr') in
-       Hashtbl.add var_env name t;
-       Let (name, expr', t)
+       let type' = resolve type_map (type_of expr') in
+       let var_env' = (name, type') :: var_env in
+       let body' = typecheck type_map fun_types var_env' body in
+       Let (name, expr', body', type')
 
   | Call ("[]", [array; index], _) ->
      let array' = check array in
@@ -154,19 +156,19 @@ let rec typecheck type_map fun_types var_env e =
 
   | If (cond, then_clause, else_clause, _) ->
      let cond' = check cond in
-     let then_clause' = map check then_clause in
-     let else_clause' = map check else_clause in
+     let then_clause' = check then_clause in
+     let else_clause' = check else_clause in
      if type_of cond' = Bool then
-       if type_of (last then_clause') = type_of (last else_clause) then
-         If (cond', then_clause', else_clause', type_of (last then_clause'))
+       if type_of then_clause' = type_of else_clause then
+         If (cond', then_clause', else_clause', type_of then_clause')
        else raise (Error "then clause has not same type as else clause")
      else raise (Error "condition is not a bool")
 
-  (* | Fun (args, types, body, _) -> *)
-  (*    let env' = assign_args args types env in *)
-  (*    let body' = map check body in *)
-  (*    let ret_type = type_of (last body') in *)
-  (*    Fun (args, types, body', Function (types, ret_type)) *)
+  | Fun (args, types, body, _) ->
+     let var_env' = create_closure_env var_env args types in
+     let body' = typecheck type_map fun_types var_env' body in
+     let ret_type = type_of body' in
+     Fun (args, types, body', Function (types, ret_type))
      
   | Var (name, _) ->
      let _type = lookup_variable var_env name in
@@ -178,8 +180,8 @@ let define_struct type_map name members =
   Hashtbl.add type_map name (Struct members'')
 
 let define_function type_map fun_types name args types body =
-  let var_env = var_env args types in
-  let body' = map (typecheck type_map fun_types var_env) body in
-  let ret_type = type_of (last body') in
+  let var_env = create_var_env args types in
+  let body' = typecheck type_map fun_types var_env body in
+  let ret_type = type_of body' in
   Hashtbl.add fun_types (name, types) (name, ret_type);
   (ret_type, body')

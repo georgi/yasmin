@@ -2,10 +2,17 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdarg.h>
 
 struct string {
   int32_t len;
   char *buf;
+};
+
+struct closure {
+  void *func;
+  int argc;
+  void *argv[];
 };
 
 typedef struct string string;

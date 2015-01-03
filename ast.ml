@@ -24,17 +24,17 @@ type expr =
   | ArrayLiteral of expr list * type_name
   | StructLiteral of (string * expr) list * type_name
   | New of expr * type_name
-  | Let of string * expr * type_name
+  | Let of string * expr * expr * type_name
   | Var of string * type_name
   | Mem of expr * string * type_name
   | MemSet of expr * string * expr * type_name
   | Call of string * expr list * type_name
-  | If of expr * expr list * expr list * type_name
-  | Fun of string list * type_name list * expr list * type_name
+  | If of expr * expr * expr * type_name
+  | Fun of string list * type_name list * expr * type_name
 
 type toplevel =
-  | Expression of expr list
+  | Expression of expr
   | StructDef of string * (string * type_name) list
-  | FunDef of string * string list * type_name list * expr list
+  | FunDef of string * string list * type_name list * expr
   | Sep
   | End

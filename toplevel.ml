@@ -29,7 +29,9 @@ let rec main_loop _module engine lexbuf =
 
   try match Parser.toplevel Lexer.token lexbuf with
       | End -> ()
-      | Sep -> Lexing.flush_input lexbuf; loop lexbuf
+      | Sep ->
+         Lexing.flush_input lexbuf;
+         loop lexbuf
 
       | StructDef (name, members) ->
          Types.define_struct type_map name members;
@@ -44,23 +46,25 @@ let rec main_loop _module engine lexbuf =
          loop lexbuf
 
       | Expression body ->
-         let check = Types.typecheck type_map fun_types (Types.var_env [] []) in
-         let body' = List.map check body in
-         let ret_type = Types.type_of (Types.last body') in
+         let var_env = Types.create_var_env [] [] in
+         let body' = Types.typecheck type_map fun_types var_env body in
+         let ret_type = Types.type_of body' in
          let func = Codegen.generate_function _module fun_values "" [] [] body' ret_type in
          let res = ExecutionEngine.run_function func [||] engine in
-         print_string ("=> " ^ (Types.string_of_type ret_type) ^ ": "); flush stdout;
+         print_string ("=> " ^ (Types.string_of_type ret_type) ^ ": "); 
          print_res ret_type res;
-         print_endline "";
+         print_endline ""; flush stdout;
          loop lexbuf
 
   with
   | Types.Error e ->
      print_endline e; flush stdout;
+     Lexing.flush_input lexbuf;
      loop lexbuf
 
   | Codegen.Error e ->
      print_endline e; flush stdout;
+     Lexing.flush_input lexbuf;
      loop lexbuf
 
   | Parsing.Parse_error ->
