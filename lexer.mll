@@ -22,6 +22,11 @@ rule token = parse
   | "else"                                { ELSE }
   | "end"                                 { END }
   | "def"                                 { DEF }
+  | "true"                                { TRUE }
+  | "false"                               { FALSE }
+  | "and"                                 { AND }
+  | "or"                                  { OR }
+  | "fun"                                 { FUN }
 
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
   | '"' ( [^ '"' '\n']* ) '"' as lxm      { STRING_LITERAL(String.sub lxm 1 ((String.length lxm) - 2)) }

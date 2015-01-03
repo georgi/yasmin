@@ -19,7 +19,7 @@
     raise Parsing.Parse_error
 %}
 
-%token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID DEF NEWLINE
+%token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID DEF TRUE FALSE AND OR FUN NEWLINE
 %token IF THEN ELSE END
 %token <string> IDENT
 %token <string> STRING_LITERAL
@@ -39,9 +39,12 @@
 %%
 
 expr:
+  | TRUE                                      { True }
+  | FALSE                                     { False }
   | FLOAT_LITERAL                             { FloatLiteral $1 }
   | INT_LITERAL                               { IntLiteral $1 }
   | STRING_LITERAL                            { StringLiteral $1 }
+  | LBRACK array RBRACK                       { ArrayLiteral ($2, Undefined) }
 
   | LPAREN expr RPAREN                        { $2 }
   | LPAREN expr                               { parse_error "expected ')'" }
@@ -61,6 +64,8 @@ expr:
   | expr GREATERTHAN expr                     { Call (">", [$1; $3], Undefined) }
   | expr LESSTHAN EQUALS expr                 { Call ("<=", [$1; $4], Undefined) }
   | expr GREATERTHAN EQUALS expr              { Call (">=", [$1; $4], Undefined) }
+  | expr AND expr                             { Call ("and", [$1; $3], Undefined) }
+  | expr OR expr                              { Call ("or", [$1; $3], Undefined) }
 
   | expr DOT IDENT                            { Mem ($1, $3, Undefined) }
   | expr DOT IDENT EQUALS expr                { MemSet ($1, $3, $5, Undefined) }
@@ -72,18 +77,12 @@ expr:
 
   | struct_literal                            { $1 }
   | if_then_else                              { $1 }
+  | FUN args_parens LCURLY sequence RCURLY    { Fun (List.map snd $2, List.map fst $2, $4, Undefined) }
 
   | UNKNOWN { parse_error "unknown token when expecting an expression." }
 ;
 if_then_else:
   | IF expr THEN sequence ELSE sequence END { If ($2, $4, $6, Undefined) }
-;
-member:
-  | type_name IDENT            { ($2, $1) }
-;
-members:
-  | member NEWLINE members     { $1 :: $3 }
-  | member NEWLINE             { [$1] }
 ;
 struct_literal:
   | LCURLY lmembers RCURLY     { StructLiteral ($2, Undefined) }
@@ -135,6 +134,13 @@ fun_def:
 ;
 struct_def:
   | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }
+;
+member:
+  | type_name IDENT            { ($2, $1) }
+;
+members:
+  | member NEWLINE members     { $1 :: $3 }
+  | member NEWLINE             { [$1] }
 ;
 toplevel:
   | sequence NEWLINE                         { Expression $1 }
