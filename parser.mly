@@ -109,7 +109,8 @@ array:
 ;
 type_name:
   | BYTE                       { Byte }
-  | STRING                     { String }
+  | STRING                     { Array Byte }
+  | type_name LBRACK RBRACK    { Array $1 }
   | INT                        { Int }
   | FLOAT                      { Float }
   | VOID                       { Void }

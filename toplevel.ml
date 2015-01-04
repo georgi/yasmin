@@ -20,8 +20,8 @@ let rec main_loop _module engine lexbuf =
     | Int32 -> print_int (GenericValue.as_int res)
     | Int -> print_int (GenericValue.as_int res)
     | Float -> print_float (GenericValue.as_float t' res)
-    | String ->
-       let puts = Codegen.lookup_function fun_values "string_puts" [String] in
+    | Array Byte ->
+       let puts = Codegen.lookup_function fun_values "string_puts" [Array Byte] in
        ignore (ExecutionEngine.run_function puts (Array.of_list [res]) engine)
     | _ -> () in
 
@@ -49,15 +49,15 @@ let rec main_loop _module engine lexbuf =
       | Expression body ->
          let var_env = Types.create_var_env [] [] in
          let body' = Types.typecheck type_map fun_types var_env body in
-         let body'' = Codegen.generate_lambdas _module fun_values [] body' in
-         print_endline (Types.string_of_expr body''); flush stdout;
          let ret_type = Types.type_of body' in
+         (* print_endline (Types.string_of_type ret_type); flush stdout; *)
+         let body'' = Codegen.generate_lambdas _module fun_values [] body' in
+         (* print_endline (Types.string_of_expr body''); flush stdout; *)
          let func = Codegen.generate_function _module fun_values "" [] [] body'' ret_type in
          (* dump_value func; *)
          let res = ExecutionEngine.run_function func [||] engine in
-         print_string ("=> " ^ (Types.string_of_type ret_type) ^ ": "); 
-         print_res ret_type res;
-         print_endline ""; flush stdout;
+         print_string ("=> " ^ (Types.string_of_type ret_type) ^ ": "); flush stdout;
+         print_res ret_type res; print_endline "";
          loop lexbuf
 
   with

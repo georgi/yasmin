@@ -42,8 +42,8 @@ let struct_ptr value members name =
   let index = assoc name (mapi (fun i (name, t) -> (name, i)) members) in
   build_struct_gep value index "mem" builder
 
-let string_type =
-  struct_type context (Array.of_list [i32_type context; pointer_type (i8_type context)])
+let struct_array_type t =
+  struct_type_for [i32_type context; i64_type context; pointer_type t]
                               
 let rec llvm_type_for = function
   | Float -> float_type context
@@ -56,8 +56,7 @@ let rec llvm_type_for = function
   | Void -> void_type context
   | TypeRef _ -> raise (Error "unresolved type ref")
   | Struct members -> pointer_type (struct_type_for (map llvm_type_for (map snd members)))
-  | Array t -> pointer_type (llvm_type_for t)
-  | String -> pointer_type string_type
+  | Array t -> pointer_type (struct_array_type (llvm_type_for t))
   | Pointer t -> pointer_type (llvm_type_for t)
   | Function (args, t) -> pointer_type (function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args)))
   | Undefined -> void_type context
@@ -99,14 +98,15 @@ let init_functions m fun_values fun_types =
   declare "-" ":fsub" Float [Float; Float];
   declare "*" ":fmul" Float [Float; Float];
   declare "and" ":and" Bool [Bool; Bool];
-  declare "+" "+" String [String; String];
+  declare "+" "+" (Array Byte) [(Array Byte); (Array Byte)];
 
-  declare_extern "puts" "string_puts" Void [String];
-  declare_extern "string_new" "string_new" String [Pointer Byte; Int32];
-  declare_extern "len" "string_len" Int [String];
-  declare_extern "+" "string_add" String [String; String];
-  declare_extern "to_i" "string_to_int" Int [String];
-  declare_extern "to_f" "string_to_float" Float [String]
+  declare_extern "puts" "string_puts" Void [Array Byte];
+  declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
+  declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];
+  declare_extern "len" "string_len" Int [Array Byte];
+  declare_extern "+" "array_add" (Array Byte) [Array Byte; Array Byte];
+  declare_extern "to_i" "string_to_int" Int [Array Byte];
+  declare_extern "to_f" "string_to_float" Float [Array Byte]
 
 let make_call fun_values name args arg_types =
   let callee = lookup_function fun_values name arg_types in
@@ -154,6 +154,15 @@ let binop_builder = function
   | ":icmp_ge" -> build_icmp Icmp.Sge
   | _ -> raise (Error "unknown binary operator")
 
+let build_struct_array t buf len =
+  let len' = const_int (i32_type context) len in
+  let size = size_of (llvm_type_for t) in
+  let struct' = build_malloc (struct_array_type (llvm_type_for t)) "arraystruct" builder in
+  let _ = build_store len' (build_struct_gep struct' 0 "len" builder) builder in
+  let _ = build_store size (build_struct_gep struct' 1 "size" builder) builder in
+  let _ = build_store buf (build_struct_gep struct' 2 "buf" builder) builder in
+  struct'
+
 let rec generate block _module fun_values var_env expr =
   let gen = generate block _module fun_values var_env in
   match expr with
@@ -167,26 +176,27 @@ let rec generate block _module fun_values var_env expr =
      last seq'
 
   | ArrayLiteral (elements, t) ->
-     let size = const_int (i32_type context) (length elements) in
-     let array = build_array_malloc (llvm_type_for t) size "array" builder in
-     let build_element i e =
+     let len = const_int (i32_type context) (length elements) in
+     let buf = build_array_malloc (llvm_type_for t) len "array" builder in
+     let struct' = build_struct_array t buf (length elements) in
+     let elements' = map gen elements in
+     let build_element i v =
        let indices = Array.of_list [const_int (i32_type context) i] in
-       let p = build_gep array indices "" builder in
-       let _ = build_store (gen e) p builder in
+       let p = build_gep buf indices "array_literal" builder in
+       let _ = build_store v p builder in
        () in
-     iteri build_element elements;
-     array
+     iteri build_element elements';
+     struct'
 
   | StringLiteral s ->
-     let init = build_global_stringptr s "str" builder in
-     let args = [init; const_int (i32_type context) (String.length s)] in
-     make_call fun_values "string_new" args [Pointer Byte; Int32]
+     let init = build_global_stringptr s "string_literal" builder in
+     build_struct_array Byte init (String.length s)
 
   | StructLiteral (members, Struct member_types) ->
      let struct_type = struct_type_for (map llvm_type_for (map snd member_types)) in
      let struct_val = build_malloc struct_type "struct" builder in
      let build_member i (_, e) =
-       let p = build_struct_gep struct_val i "" builder in
+       let p = build_struct_gep struct_val i "structmem" builder in
        let _ = build_store (gen e) p builder in
        () in
      iteri build_member members;
@@ -237,12 +247,12 @@ let rec generate block _module fun_values var_env expr =
 
   | Call ("[]", [array; index], _) ->
      let array' = gen array in
-     let index' = Array.of_list [(gen index)] in
+     let index' = Array.of_list [(const_int (i32_type context) 1); (gen index)] in
      let ptr = build_gep array' index' "ary" builder in
      build_load ptr "ptr" builder
 
   | Call ("[]=", [array; index; expr], _) ->
-     let index' = Array.of_list [gen index] in
+     let index' = Array.of_list [(const_int (i32_type context) 1); gen index] in
      let ptr = build_gep (gen array) index' "ary" builder in
      build_store (gen expr) ptr builder
 

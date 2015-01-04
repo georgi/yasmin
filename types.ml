@@ -20,7 +20,6 @@ let rec string_of_type = function
   | Int32 -> "int32"
   | Int -> "int"
   | Void -> "void"
-  | String -> "string"
   | Array t -> string_of_type t ^ "[]"
   | TypeRef name -> name
   | Struct members -> "struct (" ^ String.concat "," (map (fun (name, t) -> (string_of_type t) ^ " " ^ name) members) ^ ")"
@@ -67,7 +66,8 @@ let rec resolve type_map = function
   | Function (args, t) -> Function (map (resolve type_map) args, resolve type_map t)
   | _ as t -> t
 
-let string_of_types list = "(" ^ String.concat "," (map string_of_type list) ^ ")"
+let string_of_types list =
+  "(" ^ String.concat "," (map string_of_type list) ^ ")"
 
 let lookup_variable env name =
   (try assoc name env with
@@ -82,7 +82,7 @@ let type_of = function
   | False -> Bool
   | FloatLiteral _ -> Float
   | IntLiteral _ -> Int
-  | StringLiteral _ -> String
+  | StringLiteral _ -> Array Byte
   | ArrayLiteral (_, t) -> Array t
   | StructLiteral (_, t) -> t
   | Call (_, _, t) -> t
@@ -91,7 +91,7 @@ let type_of = function
   | Var (_, t) -> t
   | Mem (_, _, t) -> t
   | MemSet (_, _, _, t) -> t
-  | New (_, t) -> Pointer t
+  | New (_, t) -> Array t
   | Fun (_, _, _, _, _, t) -> t
   | Seq (_, t) -> t
 

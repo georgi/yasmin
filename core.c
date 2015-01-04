@@ -4,47 +4,43 @@
 #include <string.h>
 #include <stdarg.h>
 
-struct string {
+struct array {
   int32_t len;
+  size_t size;
   char *buf;
 };
 
-struct closure {
-  void *func;
-  int argc;
-  void *argv[];
-};
+typedef struct array array;
 
-typedef struct string string;
-
-string *string_new(char *buf, int32_t len) {
-  string *s = malloc(sizeof(string));
+array *array_new(char *buf, int32_t len, size_t size) {
+  array *s = malloc(sizeof(array));
   s->len = len;
+  s->size = size;
   s->buf = buf;
   return s;
 }
 
-void string_puts(string *s) {
+void string_puts(array *s) {
   puts(s->buf);
 }
 
-int string_len(string *s) {
+int array_len(array *s) {
   return s->len;
 }
 
-float string_to_float(string *s) {
+float string_to_float(array *s) {
   return atof(s->buf);
 }
 
-int string_to_int(string *s) {
+int string_to_int(array *s) {
   return atoi(s->buf);
 }
 
-string *string_add(string *s, string *t) {
+array *array_add(array *s, array *t) {
   int len = s->len + t->len;
-  char *buf = malloc(len + 1);
-  memcpy(buf, s->buf, s->len);
-  memcpy(buf + s->len, t->buf, t->len);
+  char *buf = malloc(s->size * len + 1);
+  memcpy(buf, s->buf, s->size * s->len);
+  memcpy(buf + s->len, t->buf, t->size * t->len);
   buf[len] = '\0';
-  return string_new(buf, len);
+  return array_new(buf, len, s->size);
 }

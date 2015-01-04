@@ -7,7 +7,6 @@ type type_name =
   | Float
   | Double
   | Void
-  | String
   | TypeRef of string
   | Struct of (string * type_name) list
   | Array of type_name
