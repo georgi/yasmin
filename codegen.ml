@@ -117,8 +117,7 @@ let make_closure_call var_env name args =
   let fun_type = lookup_variable_type var_env name in
   let Function (fun_args, _) = fun_type in
   let ptr = build_struct_gep closure 0 "closure" builder in
-  let ptr' = build_bitcast ptr (llvm_type_for fun_type) "cast" builder in
-  let callee = build_load ptr' "" builder in 
+  let callee = build_load ptr "" builder in 
   let build_args i _ =
     let p = build_struct_gep closure (i + 1) "" builder in
     build_load p "" builder in
@@ -277,13 +276,12 @@ let rec generate block _module fun_values var_env expr =
      position_at_end exit_block builder;
      build_load result "res" builder
 
-  | Fun (name, _, _, types, _, _) ->
-     let closure_type = struct_type_for ((pointer_type (i8_type context)) :: (map (fun (_, (_, t)) -> llvm_type_for t) var_env)) in
+  | Fun (name, _, _, types, _, t) ->
+     let closure_type = struct_type_for (llvm_type_for t :: (map (fun (_, (_, t)) -> llvm_type_for t) var_env)) in
      let value = build_malloc closure_type "closure" builder in
      let funval = lookup_function fun_values name types in
-     let funval' = build_bitcast funval (pointer_type (i8_type context)) "" builder in
      let funptr = build_struct_gep value 0 "" builder in
-     let _ = build_store funval' funptr builder in
+     let _ = build_store funval funptr builder in
      let build_param i (_, (v, _)) =
        let p = build_struct_gep value (i + 1) "" builder in
        let _ = build_store v p builder in
