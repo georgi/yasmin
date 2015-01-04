@@ -7,14 +7,33 @@ exception Error of string
 let context = global_context ()
 let builder = builder context
 let last list = nth list ((length list) - 1)
+  
+let rec drop list n =
+  match list with
+  | [] -> []
+  | a :: rest ->
+     if n == 0 then list
+     else drop rest (n - 1);;
 
 let lookup_function env name args =
   (try Hashtbl.find env (name, args) with
    | Not_found -> raise (Error ("unknown function " ^ name ^ (Types.string_of_types args))))
 
 let lookup_variable env name =
-  (try assoc name env with
+  (try fst(assoc name env) with
    | Not_found -> raise (Error ("unknown variable " ^ name)))
+
+let lookup_variable_type env name =
+  (try snd(assoc name env) with
+   | Not_found -> raise (Error ("unknown variable " ^ name)))
+
+let create_var_env func args types =
+  let bind_param i value =
+    let name = nth args i in
+    let _type = nth types i in
+    set_value_name name value;
+    (name, (value, _type)) in
+  Array.to_list (Array.mapi bind_param (params func))
 
 let struct_type_for llvm_types =
   struct_type context (Array.of_list llvm_types)
@@ -40,8 +59,13 @@ let rec llvm_type_for = function
   | Array t -> pointer_type (llvm_type_for t)
   | String -> pointer_type string_type
   | Pointer t -> pointer_type (llvm_type_for t)
-  | Function (args, t) -> function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args))
+  | Function (args, t) -> pointer_type (function_type (llvm_type_for t) (Array.of_list (map llvm_type_for args)))
   | Undefined -> void_type context
+
+let rec string_of_env = function 
+  | [] -> ""
+  | (name, value) :: rest ->
+     name ^ ": " ^ (string_of_llvalue value) ^ " " ^ (string_of_env rest)
 
 let init_functions m fun_values fun_types =
   let declare_extern name name' ret args =
@@ -84,16 +108,22 @@ let init_functions m fun_values fun_types =
   declare_extern "to_i" "string_to_int" Int [String];
   declare_extern "to_f" "string_to_float" Float [String]
 
-let create_var_env func args =
-  let bind_param i value =
-    let name = nth args i in
-    set_value_name name value;
-    (name, value) in
-  Array.to_list (Array.mapi bind_param (params func))
-
 let make_call fun_values name args arg_types =
   let callee = lookup_function fun_values name arg_types in
   build_call callee (Array.of_list args) "" builder
+
+let make_closure_call var_env name args =
+  let closure = lookup_variable var_env name in
+  let fun_type = lookup_variable_type var_env name in
+  let Function (fun_args, _) = fun_type in
+  let ptr = build_struct_gep closure 0 "closure" builder in
+  let ptr' = build_bitcast ptr (llvm_type_for fun_type) "cast" builder in
+  let callee = build_load ptr' "" builder in 
+  let build_args i _ =
+    let p = build_struct_gep closure (i + 1) "" builder in
+    build_load p "" builder in
+  let closure_args = mapi build_args (drop fun_args (length args)) in
+  build_call callee (Array.of_list (args @ closure_args)) "" builder
 
 let make_ret ret_type ret =
   match ret_type with
@@ -133,6 +163,10 @@ let rec generate block _module fun_values var_env expr =
   | FloatLiteral n -> const_float (float_type context) n
   | IntLiteral n -> const_int (i64_type context) n
 
+  | Seq (seq, t) ->
+     let seq' = map gen seq in
+     last seq'
+
   | ArrayLiteral (elements, t) ->
      let size = const_int (i32_type context) (length elements) in
      let array = build_array_malloc (llvm_type_for t) size "array" builder in
@@ -168,7 +202,7 @@ let rec generate block _module fun_values var_env expr =
 
   | Let (name, expr, body, t) ->
      let value = gen expr in
-     let var_env' = (name, value) :: var_env in
+     let var_env' = (name, (value, Types.type_of expr)) :: var_env in
      set_value_name name value;
      generate block _module fun_values var_env' body
      
@@ -222,7 +256,10 @@ let rec generate block _module fun_values var_env expr =
      else
        let args' = map gen args in
        let arg_types = map Types.type_of args in
-       make_call fun_values name args' arg_types
+       if mem_assoc name var_env then
+         make_closure_call var_env name args'
+       else
+         make_call fun_values name args' arg_types
 
   | If (cond, then_clause, else_clause, t) ->
      let func = block_parent block in
@@ -232,33 +269,34 @@ let rec generate block _module fun_values var_env expr =
      let exit_block = append_block context "exit" func in
      let _ = build_cond_br (gen cond) then_block else_block builder in
      position_at_end then_block builder;
-     let then_result = gen then_clause in
-     let _ = build_store then_result result builder in
+     let _ = build_store (gen then_clause) result builder in
      let _ = build_br exit_block builder in
      position_at_end else_block builder;
-     let else_result = gen else_clause in
-     let _ = build_store else_result result builder in
+     let _ = build_store (gen else_clause) result builder in
      let _ = build_br exit_block builder in
      position_at_end exit_block builder;
      build_load result "res" builder
 
-  (* | Fun (args, types, body, ret_type) -> *)
-  (*    let struct_type = struct_type_for (map llvm_type_for (map snd member_types)) in *)
-  (*    let struct_val = build_malloc struct_type "struct" builder in *)
-  (*    let build_member i (_, e) = *)
-  (*      let p = build_struct_gep struct_val i "" builder in *)
-  (*      let _ = build_store (gen e) p builder in *)
-  (*      () in *)
-  (*    iteri build_member members; *)
-  (*    struct_val *)
-   
+  | Fun (name, _, _, types, _, _) ->
+     let closure_type = struct_type_for ((pointer_type (i8_type context)) :: (map (fun (_, (_, t)) -> llvm_type_for t) var_env)) in
+     let value = build_malloc closure_type "closure" builder in
+     let funval = lookup_function fun_values name types in
+     let funval' = build_bitcast funval (pointer_type (i8_type context)) "" builder in
+     let funptr = build_struct_gep value 0 "" builder in
+     let _ = build_store funval' funptr builder in
+     let build_param i (_, (v, _)) =
+       let p = build_struct_gep value (i + 1) "" builder in
+       let _ = build_store v p builder in
+       () in
+     iteri build_param var_env;
+     value
 
 let generate_function _module fun_values name args types body ret_type =
   let types' = map llvm_type_for types in
   let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
   let func = declare_function name fun_type _module in
   let block = append_block context "entry" func in
-  let var_env = create_var_env func args in
+  let var_env = create_var_env func args types in
 
   position_at_end block builder;
 
@@ -270,3 +308,33 @@ let generate_function _module fun_values name args types body ret_type =
   with e ->
     delete_function func;
     raise e
+
+let fname = ref 0
+                
+let rec generate_lambdas _module fun_values var_env expr =
+  let gen = generate_lambdas _module fun_values var_env in
+  match expr with
+  | ArrayLiteral (elements, t) -> ArrayLiteral (map gen elements, t)
+  | StructLiteral (members, t) -> StructLiteral (map (fun (n, e) -> (n, gen e)) members, t)
+  | Mem (expr, name, t) -> Mem (gen expr, name, t)
+  | MemSet (lhs, name, rhs, t) -> MemSet (gen lhs, name, gen rhs, t)
+  | Seq (e, t) -> Seq (map gen e, t)
+  | Call (name, args, t) -> Call (name, map gen args, t)
+  | If (cond, then_clause, else_clause, t) -> If (gen cond, gen then_clause, gen else_clause, t)
+
+  | Let (name, expr, body, t) ->
+     let expr' = gen expr in
+     let var_env' = (name, Types.type_of expr') :: var_env in
+     let body' = generate_lambdas _module fun_values var_env' body in
+     Let (name, expr', body', t)
+
+  | Fun (_, args, ret_type, types, body, t) ->
+     let args' = args @ (map fst var_env) in
+     let types' = types @ (map snd var_env) in
+     let name = "lambda-" ^ (string_of_int !fname) in
+     let func = generate_function _module fun_values name args' types' body ret_type in
+     Hashtbl.add fun_values (name, types') func;
+     fname := !fname + 1;
+     Fun (name, args', ret_type, types', body, Function (types', ret_type))
+
+  | _ -> expr

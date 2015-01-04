@@ -30,7 +30,8 @@ type expr =
   | MemSet of expr * string * expr * type_name
   | Call of string * expr list * type_name
   | If of expr * expr * expr * type_name
-  | Fun of string list * type_name list * expr * type_name
+  | Fun of string * string list * type_name * type_name list * expr * type_name
+  | Seq of expr list * type_name
 
 type toplevel =
   | Expression of expr

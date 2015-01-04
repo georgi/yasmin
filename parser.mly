@@ -21,7 +21,7 @@
 %}
 
 %token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID DEF TRUE FALSE AND OR FUN 
-%token IF THEN ELSE END LET IN
+%token IF THEN ELSE END LET IN 
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <float> FLOAT_LITERAL
@@ -50,8 +50,6 @@ expr:
   | STRING_LITERAL                            { StringLiteral $1 }
   | LBRACK array RBRACK                       { ArrayLiteral ($2, Undefined) }
 
-  | expr PLUS expr                            { Call ("+", [$1; $3], Undefined) }
-
   | expr LBRACK expr RBRACK                   { Call ("[]", [$1; $3], Undefined) }
   | expr LBRACK expr RBRACK EQUALS expr       { Call ("[]=", [$1; $3; $6], Undefined) }
 
@@ -63,6 +61,8 @@ expr:
 
   | expr DOT IDENT                            { Mem ($1, $3, Undefined) }
   | expr DOT IDENT EQUALS expr                { MemSet ($1, $3, $5, Undefined) }
+
+  | expr PLUS expr                            { Call ("+", [$1; $3], Undefined) }
   | expr MINUS expr                           { Call ("-", [$1; $3], Undefined) }
   | expr TIMES expr                           { Call ("*", [$1; $3], Undefined) }
   | expr DIV expr                             { Call ("/", [$1; $3], Undefined) }
@@ -80,13 +80,17 @@ expr:
 
   | struct_literal                            { $1 }
   | if_then_else                              { $1 }
-  | FUN args_parens expr                      { Fun (List.map snd $2, List.map fst $2, $3, Undefined) }
-  | LET IDENT EQUALS expr IN expr             { Let ($2, $4, $6, Undefined) }
+  | FUN args_parens seq END                   { Fun ("", List.map snd $2, Undefined, List.map fst $2, Seq ($3, Undefined), Undefined) }
+  | LET IDENT EQUALS expr IN seq END          { Let ($2, $4, Seq ($6, Undefined), Undefined) }
 
   | UNKNOWN { parse_error "unknown token when expecting an expression." }
 ;
+seq:
+  | expr SEMICOLON seq         { $1 :: $3 }
+  | expr                       { [$1] }
+;
 if_then_else:
-  | IF expr THEN expr ELSE expr { If ($2, $4, $6, Undefined) }
+  | IF expr THEN seq ELSE seq END { If ($2, Seq($4, Undefined), Seq($6, Undefined), Undefined) }
 ;
 struct_literal:
   | LCURLY lmembers RCURLY     { StructLiteral ($2, Undefined) }
@@ -128,7 +132,7 @@ params:
   | expr                       { [$1] }
 ;
 fun_def:
-  | DEF IDENT args_parens expr { FunDef ($2, List.map snd $3, List.map fst $3, $4) }
+  | DEF IDENT args_parens seq END { FunDef ($2, List.map snd $3, List.map fst $3, Seq ($4, Undefined)) }
 ;
 struct_def:
   | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }

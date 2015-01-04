@@ -2,6 +2,8 @@ open Llvm
 open Llvm_executionengine
        
 let main () =
+  Printexc.record_backtrace true;
+  
   ignore (initialize_native_target ());
 
   let lexbuf = Lexing.from_channel stdin in

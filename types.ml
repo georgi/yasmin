@@ -28,6 +28,35 @@ let rec string_of_type = function
   | Function (args, t) -> string_of_type t ^ "(" ^ String.concat "," (map string_of_type args) ^ ")"
   | Undefined -> "undefined"
 
+let rec string_of_expr = function
+  | True -> "true"
+  | False -> "false"
+  | FloatLiteral f -> string_of_float f 
+  | IntLiteral i -> string_of_int i
+  | StringLiteral s -> "\"" ^ s ^ "\""
+  | ArrayLiteral (e, t) -> "[" ^ (String.concat "," (map string_of_expr e)) ^ "]"
+  | StructLiteral (members, t) -> "{" ^ String.concat "," (map (fun (name, e) -> name ^ ": " ^ (string_of_expr e)) members) ^ "}"
+  | Call (name, args, t) -> name ^ "(" ^ (String.concat "," (map string_of_expr args)) ^ ")"
+  | Let (name, expr, body, t) -> "let " ^ name ^ " = " ^ (string_of_expr expr) ^ " in " ^ (string_of_expr body) ^ " end"
+  | If (cond, then_clause, else_clause, t) -> "if " ^ (string_of_expr cond) ^
+                                                " then " ^ (string_of_expr then_clause) ^
+                                                  " else " ^ (string_of_expr else_clause) ^
+                                                    " end"
+  | Var (name, t) -> name
+  | Mem (lhs, name, t) -> (string_of_expr lhs) ^ "." ^ name
+  | MemSet (lhs, name, rhs, t) -> (string_of_expr lhs) ^ "." ^ name ^ " = " ^ (string_of_expr rhs)
+  | New (e, t) -> "new " ^ (string_of_expr e)
+  | Fun (name, args, _, types, body, t) -> "fun " ^ name ^ "(" ^
+                                          (String.concat ","
+                                                         (map2 (fun t a -> (string_of_type t) ^ " " ^ a) types args))
+                                          ^ ") " ^ (string_of_expr body) ^ " end"
+  | Seq (seq, t) -> String.concat "; " (map string_of_expr seq)
+
+let rec string_of_env = function 
+  | [] -> ""
+  | (name, type') :: rest ->
+     name ^ ": " ^ (string_of_type type') ^ " " ^ (string_of_env rest)
+
 let rec resolve type_map = function
   | TypeRef name -> 
      (try Hashtbl.find type_map name with
@@ -63,7 +92,8 @@ let type_of = function
   | Mem (_, _, t) -> t
   | MemSet (_, _, _, t) -> t
   | New (_, t) -> Pointer t
-  | Fun (_, _, _, t) -> t
+  | Fun (_, _, _, _, _, t) -> t
+  | Seq (_, t) -> t
 
 let rec typecheck type_map fun_types var_env e =
   let check = typecheck type_map fun_types var_env in
@@ -73,6 +103,10 @@ let rec typecheck type_map fun_types var_env e =
   | FloatLiteral n -> e
   | IntLiteral n -> e
   | StringLiteral s -> e
+  | Seq (seq, _) ->
+     let seq' = map check seq in
+     Seq (seq', type_of (last seq'))
+
   | ArrayLiteral (elements, _) ->
      let elements' = map check elements in
      let t = type_of (last elements') in
@@ -121,7 +155,7 @@ let rec typecheck type_map fun_types var_env e =
        let type' = resolve type_map (type_of expr') in
        let var_env' = (name, type') :: var_env in
        let body' = typecheck type_map fun_types var_env' body in
-       Let (name, expr', body', type')
+       Let (name, expr', body', type_of body')
 
   | Call ("[]", [array; index], _) ->
      let array' = check array in
@@ -151,8 +185,20 @@ let rec typecheck type_map fun_types var_env e =
   | Call (name, args, _) ->
      let args' = map check args in
      let arg_types = map type_of args' in
-     let (name', ret_type) = lookup_function fun_types name arg_types in
-     Call (name', args', resolve type_map ret_type)
+     if mem_assoc name var_env then
+       let func = lookup_variable var_env name in
+       match func with
+       | Function (arg_types, ret_type) ->
+          let check_arg t a =
+            if t == type_of a then ()
+            else
+              raise (Error "calling closure with wrong arg types") in
+          iter2 check_arg arg_types args';
+          Call (name, args', resolve type_map ret_type)
+       | _ -> raise (Error "trying to call non function type")
+     else
+       let (name', ret_type) = lookup_function fun_types name arg_types in
+       Call (name', args', resolve type_map ret_type)
 
   | If (cond, then_clause, else_clause, _) ->
      let cond' = check cond in
@@ -164,11 +210,11 @@ let rec typecheck type_map fun_types var_env e =
        else raise (Error "then clause has not same type as else clause")
      else raise (Error "condition is not a bool")
 
-  | Fun (args, types, body, _) ->
+  | Fun (name, args, _, types, body, _) ->
      let var_env' = create_closure_env var_env args types in
      let body' = typecheck type_map fun_types var_env' body in
      let ret_type = type_of body' in
-     Fun (args, types, body', Function (types, ret_type))
+     Fun (name, args, ret_type, types, body', Function (types, ret_type))
      
   | Var (name, _) ->
      let _type = lookup_variable var_env name in
@@ -183,5 +229,6 @@ let define_function type_map fun_types name args types body =
   let var_env = create_var_env args types in
   let body' = typecheck type_map fun_types var_env body in
   let ret_type = type_of body' in
+  print_endline (string_of_type ret_type); flush stdout;
   Hashtbl.add fun_types (name, types) (name, ret_type);
   (ret_type, body')
