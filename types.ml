@@ -4,14 +4,8 @@ open Ast
 exception Error of string
 
 let last list = nth list ((length list) - 1)
-
-let create_var_env args types =
-  map2 (fun name _type -> (name, _type)) args types
-                                                                                 
-let create_closure_env env args types =
-  env @ (create_var_env args types)
-  
 let rec string_of_type = function
+  | Any -> "any"
   | Float -> "float"
   | Double -> "double"
   | Bool -> "bool"
@@ -69,14 +63,6 @@ let rec resolve type_map = function
 let string_of_types list =
   "(" ^ String.concat "," (map string_of_type list) ^ ")"
 
-let lookup_variable env name =
-  (try assoc name env with
-   | Not_found -> raise (Error ("could not find variable " ^ name)))
-
-let lookup_function env name types =
-  (try Hashtbl.find env (name, types) with
-   | Not_found -> raise (Error ("could not find function " ^ name ^ (string_of_types types))))
-
 let type_of = function
   | True -> Bool
   | False -> Bool
@@ -94,6 +80,45 @@ let type_of = function
   | New (_, t) -> Array t
   | Fun (_, _, _, _, _, t) -> t
   | Seq (_, t) -> t
+
+let add_function env name name' ret_type types =
+  let defs = if Hashtbl.mem env name then
+               Hashtbl.find env name else [] in
+  Hashtbl.add env name ((name', ret_type, types) :: defs)
+
+let lookup_variable env name =
+  (try assoc name env with
+   | Not_found -> raise (Error ("could not find variable " ^ name)))
+
+let match_type a b = match a with
+  | Array Any -> begin
+      match b with
+      | Array _ -> true
+      | _ -> false
+    end
+  | Pointer Any -> 
+     begin
+       match b with
+       | Array _ -> true
+       | _ -> false
+     end
+  | _ -> a = b
+
+let lookup_function env name types =
+  let defs = if Hashtbl.mem env name then
+               Hashtbl.find env name else [] in
+  let matching_signature (name', ret_type, types') =
+    for_all2 match_type types' types in
+
+  (try find matching_signature defs with
+   | Not_found -> raise (Error ("could not find function " ^ name ^ (string_of_types types))))
+
+let create_var_env args types =
+  map2 (fun name _type -> (name, _type)) args types
+                                                                                 
+let create_closure_env env args types =
+  env @ (create_var_env args types)
+  
 
 let rec typecheck type_map fun_types var_env e =
   let check = typecheck type_map fun_types var_env in
@@ -197,7 +222,7 @@ let rec typecheck type_map fun_types var_env e =
           Call (name, args', resolve type_map ret_type)
        | _ -> raise (Error "trying to call non function type")
      else
-       let (name', ret_type) = lookup_function fun_types name arg_types in
+       let (name', ret_type, _) = lookup_function fun_types name arg_types in
        Call (name', args', resolve type_map ret_type)
 
   | If (cond, then_clause, else_clause, _) ->
@@ -230,5 +255,5 @@ let define_function type_map fun_types name args types body =
   let body' = typecheck type_map fun_types var_env body in
   let ret_type = type_of body' in
   print_endline (string_of_type ret_type); flush stdout;
-  Hashtbl.add fun_types (name, types) (name, ret_type);
+  add_function fun_types name name ret_type types;
   (ret_type, body')

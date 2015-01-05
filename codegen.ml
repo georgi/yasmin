@@ -15,10 +15,6 @@ let rec drop list n =
      if n == 0 then list
      else drop rest (n - 1);;
 
-let lookup_function env name args =
-  (try Hashtbl.find env (name, args) with
-   | Not_found -> raise (Error ("unknown function " ^ name ^ (Types.string_of_types args))))
-
 let lookup_variable env name =
   (try fst(assoc name env) with
    | Not_found -> raise (Error ("unknown variable " ^ name)))
@@ -46,6 +42,7 @@ let struct_array_type t =
   struct_type_for [i32_type context; i64_type context; pointer_type t]
                               
 let rec llvm_type_for = function
+  | Any -> pointer_type (i8_type context)
   | Float -> float_type context
   | Double -> double_type context
   | Bool -> i1_type context
@@ -66,16 +63,15 @@ let rec string_of_env = function
   | (name, value) :: rest ->
      name ^ ": " ^ (string_of_llvalue value) ^ " " ^ (string_of_env rest)
 
-let init_functions m fun_values fun_types =
+let init_functions m fun_types =
   let declare_extern name name' ret args =
     let ftype = function_type (llvm_type_for ret)
                               (Array.of_list (map llvm_type_for args)) in
-    let f = declare_function name' ftype m in
-    Hashtbl.add fun_types (name, args) (name', ret);
-    Hashtbl.add fun_values (name', args) f in
+    let _ = declare_function name' ftype m in
+    Types.add_function fun_types name name' ret args in
 
-  let declare name name' ret args =
-    Hashtbl.add fun_types (name, args) (name', ret) in
+  let declare name name' ret_type types =
+    Types.add_function fun_types name name' ret_type types in
 
   declare "to_i" "__ftoi__" Int [Float];
   declare "to_f" "__itof__" Float [Int];
@@ -104,18 +100,23 @@ let init_functions m fun_values fun_types =
   declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
   declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];
   declare_extern "len" "string_len" Int [Array Byte];
-  declare_extern "+" "array_add" (Array Byte) [Array Byte; Array Byte];
+  declare_extern "+" "array_add" (Array Any) [Array Any; Array Any];
   declare_extern "to_i" "string_to_int" Int [Array Byte];
   declare_extern "to_f" "string_to_float" Float [Array Byte]
 
-let make_call fun_values name args arg_types =
-  let callee = lookup_function fun_values name arg_types in
-  build_call callee (Array.of_list args) "" builder
+let make_call _module name args =
+  match lookup_function name _module with
+  | Some func -> build_call func (Array.of_list args) "" builder
+  | None -> raise (Error ("no function named" ^ name))
 
+let function_arg_types = function
+  | Function (arg_types, _) -> arg_types
+  | _ -> raise (Error "no function type given")
+    
 let make_closure_call var_env name args =
   let closure = lookup_variable var_env name in
   let fun_type = lookup_variable_type var_env name in
-  let Function (fun_args, _) = fun_type in
+  let fun_args = function_arg_types fun_type in
   let ptr = build_struct_gep closure 0 "closure" builder in
   let callee = build_load ptr "" builder in 
   let build_args i _ =
@@ -163,8 +164,8 @@ let build_struct_array t buf len =
   let _ = build_store buf (build_struct_gep struct' 2 "buf" builder) builder in
   struct'
 
-let rec generate block _module fun_values var_env expr =
-  let gen = generate block _module fun_values var_env in
+let rec generate block _module var_env expr =
+  let gen = generate block _module var_env in
   match expr with
   | True -> const_int (i1_type context) 1
   | False -> const_int (i1_type context) 0
@@ -213,7 +214,7 @@ let rec generate block _module fun_values var_env expr =
      let value = gen expr in
      let var_env' = (name, (value, Types.type_of expr)) :: var_env in
      set_value_name name value;
-     generate block _module fun_values var_env' body
+     generate block _module var_env' body
      
   | Var (name, _) ->
      lookup_variable var_env name
@@ -268,7 +269,7 @@ let rec generate block _module fun_values var_env expr =
        if mem_assoc name var_env then
          make_closure_call var_env name args'
        else
-         make_call fun_values name args' arg_types
+         make_call _module name args'
 
   | If (cond, then_clause, else_clause, t) ->
      let func = block_parent block in
@@ -289,17 +290,18 @@ let rec generate block _module fun_values var_env expr =
   | Fun (name, _, _, types, _, t) ->
      let closure_type = struct_type_for (llvm_type_for t :: (map (fun (_, (_, t)) -> llvm_type_for t) var_env)) in
      let value = build_malloc closure_type "closure" builder in
-     let funval = lookup_function fun_values name types in
-     let funptr = build_struct_gep value 0 "" builder in
-     let _ = build_store funval funptr builder in
-     let build_param i (_, (v, _)) =
-       let p = build_struct_gep value (i + 1) "" builder in
-       let _ = build_store v p builder in
-       () in
-     iteri build_param var_env;
-     value
+     match lookup_function name _module with
+     | Some func ->
+        let _ = build_store func (build_struct_gep value 0 "func" builder) builder in
+        let build_param i (_, (v, _)) =
+          let p = build_struct_gep value (i + 1) ("arg" ^ string_of_int(i)) builder in
+          let _ = build_store v p builder in
+          () in
+        iteri build_param var_env;
+        value
+     | None -> raise (Error ("could not find closure " ^ name))
 
-let generate_function _module fun_values name args types body ret_type =
+let generate_function _module name args types body ret_type =
   let types' = map llvm_type_for types in
   let fun_type = function_type (llvm_type_for ret_type) (Array.of_list types') in
   let func = declare_function name fun_type _module in
@@ -309,18 +311,32 @@ let generate_function _module fun_values name args types body ret_type =
   position_at_end block builder;
 
   try
-    let body' = generate block _module fun_values var_env body in
+    let body' = generate block _module var_env body in
     let _ = make_ret (Types.type_of body) body' in
     Llvm_analysis.assert_valid_function func;
     func
   with e ->
     delete_function func;
     raise e
+                
+(* let rec expand_macros expr = *)
+(*   let gen = expand_macros in *)
+(*   match expr with *)
+(*   | ArrayLiteral (elements, t) -> ArrayLiteral (map gen elements, t) *)
+(*   | StructLiteral (members, t) -> StructLiteral (map (fun (n, e) -> (n, gen e)) members, t) *)
+(*   | Mem (expr, name, t) -> Mem (gen expr, name, t) *)
+(*   | MemSet (lhs, name, rhs, t) -> MemSet (gen lhs, name, gen rhs, t) *)
+(*   | Seq (e, t) -> Seq (map gen e, t) *)
+(*   | If (cond, then_clause, else_clause, t) -> If (gen cond, gen then_clause, gen else_clause, t) *)
+(*   | Let (name, expr, body, t) -> Let (name, gen expr, gen body, t) *)
+(*   | Fun (name, args, ret_type, types, body, t) -> Fun (name, args, ret_type, types, gen body, t) *)
+(*   | Call (name, args, t) -> Call (name, map gen args, t) *)
+(*   | _ -> expr *)
 
 let fname = ref 0
                 
-let rec generate_lambdas _module fun_values var_env expr =
-  let gen = generate_lambdas _module fun_values var_env in
+let rec generate_lambdas _module var_env expr =
+  let gen = generate_lambdas _module var_env in
   match expr with
   | ArrayLiteral (elements, t) -> ArrayLiteral (map gen elements, t)
   | StructLiteral (members, t) -> StructLiteral (map (fun (n, e) -> (n, gen e)) members, t)
@@ -333,15 +349,14 @@ let rec generate_lambdas _module fun_values var_env expr =
   | Let (name, expr, body, t) ->
      let expr' = gen expr in
      let var_env' = (name, Types.type_of expr') :: var_env in
-     let body' = generate_lambdas _module fun_values var_env' body in
+     let body' = generate_lambdas _module var_env' body in
      Let (name, expr', body', t)
 
   | Fun (_, args, ret_type, types, body, t) ->
      let args' = args @ (map fst var_env) in
      let types' = types @ (map snd var_env) in
      let name = "lambda-" ^ (string_of_int !fname) in
-     let func = generate_function _module fun_values name args' types' body ret_type in
-     Hashtbl.add fun_values (name, types') func;
+     let func = generate_function _module name args' types' body ret_type in
      fname := !fname + 1;
      Fun (name, args', ret_type, types', body, Function (types', ret_type))
 

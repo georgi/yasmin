@@ -3,8 +3,7 @@ open Llvm_executionengine
 open Ast
 
 let type_map:(string, type_name) Hashtbl.t = Hashtbl.create 10
-let fun_values:(string * type_name list, llvalue) Hashtbl.t = Hashtbl.create 10
-let fun_types:((string * type_name list), (string * type_name)) Hashtbl.t = Hashtbl.create 10
+let fun_types:(string, (string * type_name * type_name list) list) Hashtbl.t = Hashtbl.create 10
 
 let rec main_loop _module engine lexbuf =
   let loop = main_loop _module engine in
@@ -21,11 +20,12 @@ let rec main_loop _module engine lexbuf =
     | Int -> print_int (GenericValue.as_int res)
     | Float -> print_float (GenericValue.as_float t' res)
     | Array Byte ->
-       let puts = Codegen.lookup_function fun_values "string_puts" [Array Byte] in
-       ignore (ExecutionEngine.run_function puts (Array.of_list [res]) engine)
+       match lookup_function "string_puts" _module with
+       | Some func ->
+          ignore (ExecutionEngine.run_function func (Array.of_list [res]) engine)
     | _ -> () in
 
-  Codegen.init_functions _module fun_values fun_types;
+  Codegen.init_functions _module fun_types;
 
   try match Parser.toplevel Lexer.token lexbuf with
       | End -> ()
@@ -39,10 +39,9 @@ let rec main_loop _module engine lexbuf =
                              
       | FunDef (name, args, types, body) ->
          let (ret_type, body') = Types.define_function type_map fun_types name args types body in
-         let body'' = Codegen.generate_lambdas _module fun_values [] body' in
-         let func = Codegen.generate_function _module fun_values name args types body'' ret_type in
-         Hashtbl.add fun_types (name, types) (name, ret_type);
-         Hashtbl.add fun_values (name, types) func;
+         let body'' = Codegen.generate_lambdas _module [] body' in
+         let func = Codegen.generate_function _module name args types body'' ret_type in
+         Types.add_function fun_types name name ret_type types;
          dump_value func;
          loop lexbuf
 
@@ -51,9 +50,9 @@ let rec main_loop _module engine lexbuf =
          let body' = Types.typecheck type_map fun_types var_env body in
          let ret_type = Types.type_of body' in
          (* print_endline (Types.string_of_type ret_type); flush stdout; *)
-         let body'' = Codegen.generate_lambdas _module fun_values [] body' in
+         let body'' = Codegen.generate_lambdas _module [] body' in
          (* print_endline (Types.string_of_expr body''); flush stdout; *)
-         let func = Codegen.generate_function _module fun_values "" [] [] body'' ret_type in
+         let func = Codegen.generate_function _module "" [] [] body'' ret_type in
          (* dump_value func; *)
          let res = ExecutionEngine.run_function func [||] engine in
          print_string ("=> " ^ (Types.string_of_type ret_type) ^ ": "); flush stdout;

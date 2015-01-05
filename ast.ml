@@ -1,4 +1,5 @@
 type type_name =
+  | Any
   | Bool
   | Byte
   | Int16
