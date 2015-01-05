@@ -1,7 +1,21 @@
 Yasmin
 ======
 
-A simple c-like language for my own pleasure.
+A simple statically typed functional language. 
+
+## Install
+
+* `brew install llvm`
+* `opam install llvm`
+* `make`
+
+## Run
+
+Currently there is only a simple REPL:
+
+`./yasmin.byte`
+
+You need to terminate each statemnent or definition with a semicolon.
 
 ## Types
 
@@ -9,30 +23,94 @@ A simple c-like language for my own pleasure.
 * byte
 * int16
 * int32
-* int (defaults to int64)
+* int
 * float
 * void
-* pointer (like `byte*`)
+* string (aka byte[])
+* arrays (int[], byte[])
 * function
 
 ## Functions
 
-C-style types and function declaration.
+Last statement is returned.
 
 ```
-int add(int x) {
-  x + x
-}
+def add(int x)
+  x + 10;
+  x + x 
+end
 
 add(10)
 ```
 
 ## Variables
 
-Local variable types are inferred and can be assigned only once.
+Cannot be reassigned.
 
 ```
-x = "Hello"
-y = " World"
-puts(x + y)
+let x = "Hello" in
+  let y = " World" in
+    puts(x + y)
+  end
+end
+```
+
+## Conditional
+
+Both clauses must be defined and have same type.
+
+```
+if x < y then
+  x + y
+else
+  x - y
+end
+```
+
+## Anonymous functions
+
+Lexical scoped functions, in this example the closure captures the state of
+the function parameter `y`:
+
+```
+def add(int y)
+  fun(int x)
+    x + y
+  end
+end
+
+let f = add(10) in
+  f(10)
+end
+```
+
+## Arrays and strings
+
+Arrays and strings are modelled as structs holding the lenght information.
+
+```
+let x = [1,2] in 
+  x[0] + x[1] 
+end
+
+let y = "Hello" in 
+  x[0] + x[1]
+end
+```
+
+## Structs
+
+```
+struct MyStruct
+  int x;
+  int y;
+end
+```
+
+## Anonymous structs
+
+```
+let x = { a: 10, b: 20 } in
+  x.a + x.b
+end
 ```

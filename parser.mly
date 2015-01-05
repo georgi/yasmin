@@ -136,7 +136,7 @@ fun_def:
   | DEF IDENT args_parens seq END { FunDef ($2, List.map snd $3, List.map fst $3, Seq ($4, Undefined)) }
 ;
 struct_def:
-  | STRUCT IDENT LCURLY members RCURLY { StructDef ($2, $4) }
+  | STRUCT IDENT members END { StructDef ($2, $4) }
 ;
 member:
   | type_name IDENT            { ($2, $1) }
