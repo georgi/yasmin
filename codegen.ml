@@ -63,11 +63,14 @@ let rec string_of_env = function
   | (name, value) :: rest ->
      name ^ ": " ^ (string_of_llvalue value) ^ " " ^ (string_of_env rest)
 
-let init_functions m fun_types =
+let declare_function_for _module name ret args = 
+  let ftype = function_type (llvm_type_for ret)
+                            (Array.of_list (map llvm_type_for args)) in
+  declare_function name ftype _module
+                   
+let init_functions _module fun_types =
   let declare_extern name name' ret args =
-    let ftype = function_type (llvm_type_for ret)
-                              (Array.of_list (map llvm_type_for args)) in
-    let _ = declare_function name' ftype m in
+    let _ = declare_function_for _module name' ret args in
     Types.add_function fun_types name name' ret args in
 
   let declare name name' ret_type types =
@@ -94,20 +97,18 @@ let init_functions m fun_types =
   declare "-" ":fsub" Float [Float; Float];
   declare "*" ":fmul" Float [Float; Float];
   declare "and" ":and" Bool [Bool; Bool];
-  declare "+" "+" (Array Byte) [(Array Byte); (Array Byte)];
 
   declare_extern "puts" "string_puts" Void [Array Byte];
   declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
   declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];
   declare_extern "len" "string_len" Int [Array Byte];
-  declare_extern "+" "array_add" (Array Any) [Array Any; Array Any];
   declare_extern "to_i" "string_to_int" Int [Array Byte];
   declare_extern "to_f" "string_to_float" Float [Array Byte]
 
 let make_call _module name args =
   match lookup_function name _module with
   | Some func -> build_call func (Array.of_list args) "" builder
-  | None -> raise (Error ("no function named" ^ name))
+  | None -> raise (Error ("no function named " ^ name))
 
 let function_arg_types = function
   | Function (arg_types, _) -> arg_types
@@ -219,6 +220,9 @@ let rec generate block _module var_env expr =
   | Var (name, _) ->
      lookup_variable var_env name
 
+  | Cast (e, t) ->
+     build_bitcast (gen e) (llvm_type_for t) "cast" builder
+
   | Mem (expr, name, _) ->
      let expr' = gen expr in
      begin
@@ -239,7 +243,10 @@ let rec generate block _module var_env expr =
           build_store rhs' ptr builder
        | _ -> raise (Error "no struct type")
      end
-                
+
+  | Decl (name, ret_type, args) ->
+     declare_function_for _module name ret_type args
+     
   | Call ("__itof__", [expr], _) ->
      build_sitofp (gen expr) (float_type context) "" builder
 
@@ -265,7 +272,6 @@ let rec generate block _module var_env expr =
        | _ -> raise (Error "binop with wrong arg count")
      else
        let args' = map gen args in
-       let arg_types = map Types.type_of args in
        if mem_assoc name var_env then
          make_closure_call var_env name args'
        else
@@ -343,6 +349,7 @@ let rec generate_lambdas _module var_env expr =
   | Mem (expr, name, t) -> Mem (gen expr, name, t)
   | MemSet (lhs, name, rhs, t) -> MemSet (gen lhs, name, gen rhs, t)
   | Seq (e, t) -> Seq (map gen e, t)
+  | Cast (e, t) -> Cast (gen e, t)
   | Call (name, args, t) -> Call (name, map gen args, t)
   | If (cond, then_clause, else_clause, t) -> If (gen cond, gen then_clause, gen else_clause, t)
 
@@ -356,7 +363,7 @@ let rec generate_lambdas _module var_env expr =
      let args' = args @ (map fst var_env) in
      let types' = types @ (map snd var_env) in
      let name = "lambda-" ^ (string_of_int !fname) in
-     let func = generate_function _module name args' types' body ret_type in
+     let _ = generate_function _module name args' types' body ret_type in
      fname := !fname + 1;
      Fun (name, args', ret_type, types', body, Function (types', ret_type))
 

@@ -19,10 +19,14 @@ let rec main_loop _module engine lexbuf =
     | Int32 -> print_int (GenericValue.as_int res)
     | Int -> print_int (GenericValue.as_int res)
     | Float -> print_float (GenericValue.as_float t' res)
+    | Void -> print_string "void"
     | Array Byte ->
-       match lookup_function "string_puts" _module with
-       | Some func ->
-          ignore (ExecutionEngine.run_function func (Array.of_list [res]) engine)
+       begin
+         match lookup_function "string_puts" _module with
+         | Some func ->
+            ignore (ExecutionEngine.run_function func (Array.of_list [res]) engine)
+         | _ -> ()
+       end;
     | _ -> () in
 
   Codegen.init_functions _module fun_types;

@@ -23,6 +23,7 @@ type expr =
   | StringLiteral of string
   | ArrayLiteral of expr list * type_name
   | StructLiteral of (string * expr) list * type_name
+  | Cast of expr * type_name
   | New of expr * type_name
   | Let of string * expr * expr * type_name
   | Var of string * type_name
@@ -31,6 +32,7 @@ type expr =
   | Call of string * expr list * type_name
   | If of expr * expr * expr * type_name
   | Fun of string * string list * type_name * type_name list * expr * type_name
+  | Decl of string * type_name * type_name list
   | Seq of expr list * type_name
 
 type toplevel =

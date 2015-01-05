@@ -24,6 +24,8 @@ let rec string_of_type = function
 let rec string_of_expr = function
   | True -> "true"
   | False -> "false"
+  | Cast (_, _) -> ""
+  | Decl (_, _, _) -> ""
   | FloatLiteral f -> string_of_float f 
   | IntLiteral i -> string_of_int i
   | StringLiteral s -> "\"" ^ s ^ "\""
@@ -66,12 +68,14 @@ let string_of_types list =
 let type_of = function
   | True -> Bool
   | False -> Bool
+  | Decl (_, _, _) -> Void
   | FloatLiteral _ -> Float
   | IntLiteral _ -> Int
   | StringLiteral _ -> Array Byte
   | ArrayLiteral (_, t) -> Array t
   | StructLiteral (_, t) -> t
   | Call (_, _, t) -> t
+  | Cast (_, t) -> t
   | Let (_, _, _, t) -> t
   | If (_, _, _, t) -> t
   | Var (_, t) -> t
@@ -90,35 +94,27 @@ let lookup_variable env name =
   (try assoc name env with
    | Not_found -> raise (Error ("could not find variable " ^ name)))
 
-let match_type a b = match a with
-  | Array Any -> begin
-      match b with
-      | Array _ -> true
-      | _ -> false
-    end
-  | Pointer Any -> 
-     begin
-       match b with
-       | Array _ -> true
-       | _ -> false
-     end
-  | _ -> a = b
+let lookup_generic = function
+  | ("+", [Array a; Array b]) ->
+     if a != b then
+       raise (Error "argument types must be of same type")
+     else
+       ("array_add", Array a, [Array a; Array a])
+  | (name, types) ->
+     raise (Error ("could not find function " ^ name ^ (string_of_types types)))
 
 let lookup_function env name types =
   let defs = if Hashtbl.mem env name then
                Hashtbl.find env name else [] in
-  let matching_signature (name', ret_type, types') =
-    for_all2 match_type types' types in
-
-  (try find matching_signature defs with
-   | Not_found -> raise (Error ("could not find function " ^ name ^ (string_of_types types))))
+  let matching_signature (name', ret_type, types') = types = types' in
+  try find matching_signature defs with
+  | Not_found -> lookup_generic (name, types)
 
 let create_var_env args types =
   map2 (fun name _type -> (name, _type)) args types
                                                                                  
 let create_closure_env env args types =
   env @ (create_var_env args types)
-  
 
 let rec typecheck type_map fun_types var_env e =
   let check = typecheck type_map fun_types var_env in
@@ -128,6 +124,8 @@ let rec typecheck type_map fun_types var_env e =
   | FloatLiteral n -> e
   | IntLiteral n -> e
   | StringLiteral s -> e
+  | Cast _ -> raise (Error "")
+  | Decl _ -> raise (Error "")
   | Seq (seq, _) ->
      let seq' = map check seq in
      Seq (seq', type_of (last seq'))
@@ -209,21 +207,26 @@ let rec typecheck type_map fun_types var_env e =
 
   | Call (name, args, _) ->
      let args' = map check args in
-     let arg_types = map type_of args' in
+     let types = map type_of args' in
      if mem_assoc name var_env then
        let func = lookup_variable var_env name in
        match func with
        | Function (arg_types, ret_type) ->
           let check_arg t a =
             if t == type_of a then ()
-            else
-              raise (Error "calling closure with wrong arg types") in
+            else raise (Error "calling closure with wrong arg types") in
           iter2 check_arg arg_types args';
           Call (name, args', resolve type_map ret_type)
        | _ -> raise (Error "trying to call non function type")
      else
-       let (name', ret_type, _) = lookup_function fun_types name arg_types in
-       Call (name', args', resolve type_map ret_type)
+       let (name', ret_type, types') = lookup_function fun_types name types in
+       let ret_type' = resolve type_map ret_type in
+       print_string (string_of_types types'); flush stdout;
+       if types = types' then
+         Call (name', args', ret_type')
+       else
+         let args'' = map2 (fun e t -> Cast (e, t)) args' types' in
+         Call (name', args'', ret_type')
 
   | If (cond, then_clause, else_clause, _) ->
      let cond' = check cond in
