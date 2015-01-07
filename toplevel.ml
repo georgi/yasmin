@@ -52,8 +52,8 @@ let rec main_loop _module engine lexbuf =
       | Expression body ->
          let var_env = Types.create_var_env [] [] in
          let body' = Types.typecheck type_map fun_types var_env body in
+         Types.print_expr body';
          let ret_type = Types.type_of body' in
-         (* print_endline (Types.string_of_type ret_type); flush stdout; *)
          let body'' = Codegen.generate_lambdas _module [] body' in
          (* print_endline (Types.string_of_expr body''); flush stdout; *)
          let func = Codegen.generate_function _module "" [] [] body'' ret_type in

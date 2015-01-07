@@ -40,7 +40,7 @@ array *array_add(array *s, array *t) {
   int len = s->len + t->len;
   char *buf = malloc(s->size * len + 1);
   memcpy(buf, s->buf, s->size * s->len);
-  memcpy(buf + s->len, t->buf, t->size * t->len);
-  buf[len] = '\0';
+  memcpy(buf + s->size * s->len, t->buf, t->size * t->len);
+  buf[s->size * len] = '\0';
   return array_new(buf, len, s->size);
 }

@@ -101,6 +101,7 @@ let init_functions _module fun_types =
   declare_extern "puts" "string_puts" Void [Array Byte];
   declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
   declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];
+  declare_extern "array_add" "array_add" (Array Byte) [Array Byte; Array Byte];
   declare_extern "len" "string_len" Int [Array Byte];
   declare_extern "to_i" "string_to_int" Int [Array Byte];
   declare_extern "to_f" "string_to_float" Float [Array Byte]
@@ -253,15 +254,18 @@ let rec generate block _module var_env expr =
   | Call ("__ftoi__", [expr], _) ->
      build_fptosi (gen expr) (i64_type context) "" builder
 
-  | Call ("[]", [array; index], _) ->
+  | Call ("[]", [array; index], t) ->
      let array' = gen array in
-     let index' = Array.of_list [(const_int (i32_type context) 1); (gen index)] in
-     let ptr = build_gep array' index' "ary" builder in
+     let buf = build_load (build_struct_gep array' 2 "buf" builder) "buf" builder in
+     let index' = Array.of_list [gen index] in
+     let ptr = build_gep buf index' "ary" builder in
      build_load ptr "ptr" builder
 
   | Call ("[]=", [array; index; expr], _) ->
-     let index' = Array.of_list [(const_int (i32_type context) 1); gen index] in
-     let ptr = build_gep (gen array) index' "ary" builder in
+     let array' = gen array in
+     let buf = build_load (build_struct_gep array' 2 "buf" builder) "buf" builder in
+     let index' = Array.of_list [gen index] in
+     let ptr = build_gep buf index' "ary" builder in
      build_store (gen expr) ptr builder
 
   | Call (name, args, _) ->

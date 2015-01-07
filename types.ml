@@ -1,5 +1,6 @@
 open List
 open Ast
+open Printf
        
 exception Error of string
 
@@ -24,28 +25,53 @@ let rec string_of_type = function
 let rec string_of_expr = function
   | True -> "true"
   | False -> "false"
-  | Cast (_, _) -> ""
   | Decl (_, _, _) -> ""
   | FloatLiteral f -> string_of_float f 
   | IntLiteral i -> string_of_int i
-  | StringLiteral s -> "\"" ^ s ^ "\""
-  | ArrayLiteral (e, t) -> "[" ^ (String.concat "," (map string_of_expr e)) ^ "]"
-  | StructLiteral (members, t) -> "{" ^ String.concat "," (map (fun (name, e) -> name ^ ": " ^ (string_of_expr e)) members) ^ "}"
-  | Call (name, args, t) -> name ^ "(" ^ (String.concat "," (map string_of_expr args)) ^ ")"
-  | Let (name, expr, body, t) -> "let " ^ name ^ " = " ^ (string_of_expr expr) ^ " in " ^ (string_of_expr body) ^ " end"
-  | If (cond, then_clause, else_clause, t) -> "if " ^ (string_of_expr cond) ^
-                                                " then " ^ (string_of_expr then_clause) ^
-                                                  " else " ^ (string_of_expr else_clause) ^
-                                                    " end"
-  | Var (name, t) -> name
-  | Mem (lhs, name, t) -> (string_of_expr lhs) ^ "." ^ name
-  | MemSet (lhs, name, rhs, t) -> (string_of_expr lhs) ^ "." ^ name ^ " = " ^ (string_of_expr rhs)
-  | New (e, t) -> "new " ^ (string_of_expr e)
-  | Fun (name, args, _, types, body, t) -> "fun " ^ name ^ "(" ^
-                                          (String.concat ","
-                                                         (map2 (fun t a -> (string_of_type t) ^ " " ^ a) types args))
-                                          ^ ") " ^ (string_of_expr body) ^ " end"
-  | Seq (seq, t) -> String.concat "; " (map string_of_expr seq)
+  | StringLiteral s -> sprintf "\"%s\"" s
+
+  | ArrayLiteral (e, t) ->
+     sprintf "[ %s ]:%s" (string_of_expr_list e) (string_of_type t)
+
+  | StructLiteral (members, t) ->
+     let string_of_member (name, e) = name ^ ": " ^ (string_of_expr e) in
+     sprintf "{ %s }" (String.concat "," (map string_of_member members))
+
+  | Cast (e, t) ->
+     sprintf "Cast (%s, %s)" (string_of_expr e) (string_of_type t)
+
+  | Call (name, args, t) ->
+     sprintf "%s( %s ):%s" name (string_of_expr_list args) (string_of_type t)
+
+  | Let (name, expr, body, t) ->
+     sprintf "let %s = %s in\n  %s end" name (string_of_expr expr) (string_of_expr body)
+             
+  | If (cond, then_clause, else_clause, t) ->
+     sprintf "if %s then\n  %s else\n %s end"
+             (string_of_expr cond) (string_of_expr then_clause) (string_of_expr else_clause)
+
+  | Var (name, t) -> sprintf "Var(%s, %s)" name (string_of_type t)
+
+  | Mem (lhs, name, t) -> sprintf "Mem(%s, %s, %s)" (string_of_expr lhs) name (string_of_type t)
+
+  | MemSet (lhs, name, rhs, t) ->
+     sprintf "MemSet(%s, %s, %s, %s)" (string_of_expr lhs) name (string_of_expr rhs) (string_of_type t)
+
+  | New (e, t) -> sprintf "new %s[%s]" (string_of_type t) (string_of_expr e)
+  | Fun (name, args, _, types, body, t) ->
+     let string_of_arg t a = (string_of_type t) ^ " " ^ a in
+     let args' = String.concat "," (map2 string_of_arg types args) in
+     sprintf "fun %s(%s) %s end" name args' (string_of_expr body)
+
+  | Seq (seq, t) -> String.concat ";  \n" (map string_of_expr seq)
+
+and string_of_expr_list e =
+  String.concat ", " (map string_of_expr e)
+                                          
+
+let print_expr e =
+  print_endline (string_of_expr e);
+  flush stdout
 
 let rec string_of_env = function 
   | [] -> ""
@@ -94,21 +120,23 @@ let lookup_variable env name =
   (try assoc name env with
    | Not_found -> raise (Error ("could not find variable " ^ name)))
 
-let lookup_generic = function
+let lookup_generic name types =
+  match (name, types) with
   | ("+", [Array a; Array b]) ->
      if a != b then
        raise (Error "argument types must be of same type")
      else
-       ("array_add", Array a, [Array a; Array a])
-  | (name, types) ->
+       ("array_add", Array a, [Array Byte; Array Byte])
+  | _ ->
      raise (Error ("could not find function " ^ name ^ (string_of_types types)))
 
 let lookup_function env name types =
-  let defs = if Hashtbl.mem env name then
-               Hashtbl.find env name else [] in
-  let matching_signature (name', ret_type, types') = types = types' in
-  try find matching_signature defs with
-  | Not_found -> lookup_generic (name, types)
+  if Hashtbl.mem env name then
+    let defs = Hashtbl.find env name in
+    let matching_signature (name', ret_type, types') = types = types' in
+    try Some (find matching_signature defs) with
+    | Not_found -> None
+  else None
 
 let create_var_env args types =
   map2 (fun name _type -> (name, _type)) args types
@@ -219,14 +247,16 @@ let rec typecheck type_map fun_types var_env e =
           Call (name, args', resolve type_map ret_type)
        | _ -> raise (Error "trying to call non function type")
      else
-       let (name', ret_type, types') = lookup_function fun_types name types in
-       let ret_type' = resolve type_map ret_type in
-       print_string (string_of_types types'); flush stdout;
-       if types = types' then
-         Call (name', args', ret_type')
-       else
-         let args'' = map2 (fun e t -> Cast (e, t)) args' types' in
-         Call (name', args'', ret_type')
+       begin
+         match lookup_function fun_types name types with
+         | Some (name', ret_type, _) ->
+            let ret_type' = resolve type_map ret_type in
+            Call (name', args', ret_type')
+         | None ->
+            let (name', ret_type', types') = lookup_generic name types in
+            let args'' = map2 (fun e t -> Cast (e, t)) args' types' in
+            Cast(Call (name', args'', ret_type'), ret_type')
+       end
 
   | If (cond, then_clause, else_clause, _) ->
      let cond' = check cond in
