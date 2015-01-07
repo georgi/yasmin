@@ -51,10 +51,10 @@ let rec string_of_expr = function
      sprintf "%s( %s ):%s" name (string_of_expr_list args) (string_of_type t)
 
   | Let (name, expr, body, t) ->
-     sprintf "let %s = %s in\n  %s end" name (string_of_expr expr) (string_of_expr body)
+     sprintf "let %s = %s in %s end" name (string_of_expr expr) (string_of_expr body)
              
   | If (cond, then_clause, else_clause, t) ->
-     sprintf "if %s then\n  %s else\n %s end"
+     sprintf "if %s then  %s else %s end"
              (string_of_expr cond) (string_of_expr then_clause) (string_of_expr else_clause)
 
   | Var (name, t) -> sprintf "Var(%s, %s)" name (string_of_type t)
@@ -283,7 +283,7 @@ let rec typecheck type_map fun_types var_env e =
      let then_clause' = check then_clause in
      let else_clause' = check else_clause in
      if type_of cond' = Bool then
-       if type_of then_clause' = type_of else_clause then
+       if type_of then_clause' = type_of else_clause' then
          If (cond', then_clause', else_clause', type_of then_clause')
        else raise (Error "then clause has not same type as else clause")
      else raise (Error "condition is not a bool")

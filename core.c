@@ -41,6 +41,10 @@ float string_to_float(array *s) {
   return atof(s->buf);
 }
 
+int string_compare(array *s, array *t) {
+  return strcmp(s->buf, t->buf) == 0;
+}
+
 int string_to_int(array *s) {
   return atoi(s->buf);
 }

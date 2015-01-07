@@ -28,7 +28,9 @@ rule token = parse
   | "false"                               { FALSE }
   | "and"                                 { AND }
   | "or"                                  { OR }
+  | "do"                                  { DO }
   | "fun"                                 { FUN }
+  | "->"                                  { ARROW }
 
   | ( letter ( letter | digit )* ) as lxm { IDENT(lxm) }
   | '"' ( [^ '"' '\n']* ) '"' as lxm      { STRING_LITERAL(String.sub lxm 1 ((String.length lxm) - 2)) }
@@ -39,6 +41,7 @@ rule token = parse
 
   | '#' [^ '\n']*                         { token lexbuf }
 
+  | '|'                                   { PIPE }
   | '('                                   { LPAREN }
   | ')'                                   { RPAREN }
   | '{'                                   { LCURLY }

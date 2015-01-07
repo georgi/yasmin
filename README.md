@@ -74,9 +74,7 @@ the function parameter `y`:
 
 ```
 def add(int y)
-  fun(int x)
-    x + y
-  end
+  fun(int x) { x + y }
 end
 
 let f = add(10) in

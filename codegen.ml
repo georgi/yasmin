@@ -110,6 +110,8 @@ let init_functions _module fun_types =
        ["iaslnum"; "isalpha"; "islower"; "isupper"; "isdigit"; "iscntrl";
         "isgraph"; "isspace"; "isblank"; "isprint"; "ispunct"];
   
+  declare_extern "==" "string_compare" Bool [Array Byte; Array Byte];
+  declare_extern "tolower" "tolower" Byte [Byte];
   declare_extern "puts" "string_puts" Void [Array Byte];
   declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
   declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];

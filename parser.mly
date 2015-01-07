@@ -21,7 +21,7 @@
 %}
 
 %token NEW STRUCT INT BOOL BYTE FLOAT STRING VOID DEF TRUE FALSE AND OR FUN 
-%token IF THEN ELSE END LET IN 
+%token IF THEN ELSE END LET IN DO ARROW
 %token <string> IDENT
 %token <string> STRING_LITERAL
 %token <string> CHAR_LITERAL
@@ -29,7 +29,7 @@
 %token <int> INT_LITERAL
 %token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
 %token COMMA SEMICOLON COLON EQUALS DOT
-%token LESSTHAN GREATERTHAN BANG 
+%token LESSTHAN GREATERTHAN BANG PIPE
 %token EOS
 %token UNKNOWN
 %token PLUS MINUS TIMES DIV
@@ -54,6 +54,9 @@ expr:
 
   | expr LBRACK expr RBRACK                   { Call ("[]", [$1; $3], Undefined) }
   | expr LBRACK expr RBRACK EQUALS expr       { Call ("[]=", [$1; $3; $6], Undefined) }
+
+  | IDENT params_parens DO PIPE args_parens PIPE seq END
+          { Call ($1, $2 @ [Fun ("", List.map snd $5, Undefined, List.map fst $5, Seq ($7, Undefined), Undefined) ], Undefined) }
 
   | IDENT params_parens                       { Call ($1, $2, Undefined) }
   | IDENT                                     { Var ($1, Undefined) }
@@ -82,7 +85,7 @@ expr:
 
   | struct_literal                            { $1 }
   | if_then_else                              { $1 }
-  | FUN args_parens seq END                   { Fun ("", List.map snd $2, Undefined, List.map fst $2, Seq ($3, Undefined), Undefined) }
+  | FUN args_parens LCURLY seq RCURLY         { Fun ("", List.map snd $2, Undefined, List.map fst $2, Seq ($4, Undefined), Undefined) }
   | LET IDENT EQUALS expr IN seq END          { Let ($2, $4, Seq ($6, Undefined), Undefined) }
 
   | UNKNOWN { parse_error "unknown token when expecting an expression." }
@@ -113,10 +116,19 @@ type_name:
   | BYTE                       { Byte }
   | STRING                     { Array Byte }
   | type_name LBRACK RBRACK    { Array $1 }
+  | FUN type_parens COLON type_name { Function ($2, $4) }
   | INT                        { Int }
   | FLOAT                      { Float }
   | VOID                       { Void }
   | IDENT                      { TypeRef $1 }
+;
+type_parens:
+  | LPAREN types RPAREN         { $2 }
+  | LPAREN RPAREN              { [] }
+;
+types:
+  | type_name COMMA types      { $1 :: $3 }
+  | type_name                  { [$1] }
 ;
 args_parens:
   | LPAREN args RPAREN         { $2 }
