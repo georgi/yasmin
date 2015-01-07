@@ -28,6 +28,7 @@ let rec string_of_expr = function
   | Decl (_, _, _) -> ""
   | FloatLiteral f -> string_of_float f 
   | IntLiteral i -> string_of_int i
+  | CharLiteral c -> sprintf "'%c'" c
   | StringLiteral s -> sprintf "\"%s\"" s
 
   | ArrayLiteral (e, t) ->
@@ -40,6 +41,12 @@ let rec string_of_expr = function
   | Cast (e, t) ->
      sprintf "Cast (%s, %s)" (string_of_expr e) (string_of_type t)
 
+  | Call ("[]", [array; index], _) ->
+     sprintf "%s[%s]" (string_of_expr array) (string_of_expr index)
+
+  | Call ("[]=", [array; index; expr], _) ->
+     sprintf "%s[%s] = %s" (string_of_expr array) (string_of_expr index) (string_of_expr expr)
+     
   | Call (name, args, t) ->
      sprintf "%s( %s ):%s" name (string_of_expr_list args) (string_of_type t)
 
@@ -96,6 +103,7 @@ let type_of = function
   | False -> Bool
   | Decl (_, _, _) -> Void
   | FloatLiteral _ -> Float
+  | CharLiteral _ -> Byte
   | IntLiteral _ -> Int
   | StringLiteral _ -> Array Byte
   | ArrayLiteral (_, t) -> Array t
@@ -122,6 +130,9 @@ let lookup_variable env name =
 
 let lookup_generic name types =
   match (name, types) with
+  | ("printf", _) ->
+     ("string_printf", Int, types)
+
   | ("+", [Array a; Array b]) ->
      if a != b then
        raise (Error "argument types must be of same type")
@@ -152,8 +163,10 @@ let rec typecheck type_map fun_types var_env e =
   | FloatLiteral n -> e
   | IntLiteral n -> e
   | StringLiteral s -> e
+  | CharLiteral c -> e
   | Cast _ -> raise (Error "")
   | Decl _ -> raise (Error "")
+
   | Seq (seq, _) ->
      let seq' = map check seq in
      Seq (seq', type_of (last seq'))
@@ -253,9 +266,16 @@ let rec typecheck type_map fun_types var_env e =
             let ret_type' = resolve type_map ret_type in
             Call (name', args', ret_type')
          | None ->
-            let (name', ret_type', types') = lookup_generic name types in
-            let args'' = map2 (fun e t -> Cast (e, t)) args' types' in
-            Cast(Call (name', args'', ret_type'), ret_type')
+            let (name', ret_type, types') = lookup_generic name types in
+            let ret_type' = resolve type_map ret_type in
+            let cast i e =
+              let t = nth types i in
+              let t' = nth types' i in
+              if t = t' then e
+              else Cast (e, t') in
+            let call = Call (name', (mapi cast args'), ret_type') in
+            if ret_type = ret_type' then call
+            else Cast (call, ret_type')
        end
 
   | If (cond, then_clause, else_clause, _) ->

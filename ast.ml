@@ -20,6 +20,7 @@ type expr =
   | False
   | FloatLiteral of float
   | IntLiteral of int
+  | CharLiteral of char
   | StringLiteral of string
   | ArrayLiteral of expr list * type_name
   | StructLiteral of (string * expr) list * type_name

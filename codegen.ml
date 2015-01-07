@@ -67,6 +67,11 @@ let declare_function_for _module name ret args =
   let ftype = function_type (llvm_type_for ret)
                             (Array.of_list (map llvm_type_for args)) in
   declare_function name ftype _module
+
+let declare_var_arg_function_for _module name ret args = 
+  let ftype = var_arg_function_type (llvm_type_for ret)
+                            (Array.of_list (map llvm_type_for args)) in
+  declare_function name ftype _module
                    
 let init_functions _module fun_types =
   let declare_extern name name' ret args =
@@ -98,10 +103,16 @@ let init_functions _module fun_types =
   declare "*" ":fmul" Float [Float; Float];
   declare "and" ":and" Bool [Bool; Bool];
 
+  ignore (declare_function_for _module "array_add" (Array Byte) [Array Byte; Array Byte]);
+  ignore (declare_function_for _module "string_printf" (Int) [Array Byte]);
+
+  iter (fun name -> declare_extern name name Bool [Byte])
+       ["iaslnum"; "isalpha"; "islower"; "isupper"; "isdigit"; "iscntrl";
+        "isgraph"; "isspace"; "isblank"; "isprint"; "ispunct"];
+  
   declare_extern "puts" "string_puts" Void [Array Byte];
   declare_extern "strcpy" "strcpy" (Array Byte) [Array Byte; Array Byte];
   declare_extern "array_new" "array_new" (Array Byte) [Pointer Byte; Int32];
-  declare_extern "array_add" "array_add" (Array Byte) [Array Byte; Array Byte];
   declare_extern "len" "string_len" Int [Array Byte];
   declare_extern "to_i" "string_to_int" Int [Array Byte];
   declare_extern "to_f" "string_to_float" Float [Array Byte]
@@ -173,6 +184,7 @@ let rec generate block _module var_env expr =
   | False -> const_int (i1_type context) 0
   | FloatLiteral n -> const_float (float_type context) n
   | IntLiteral n -> const_int (i64_type context) n
+  | CharLiteral c -> const_int (i8_type context) (int_of_char c)
 
   | Seq (seq, t) ->
      let seq' = map gen seq in

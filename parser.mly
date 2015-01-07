@@ -24,6 +24,7 @@
 %token IF THEN ELSE END LET IN 
 %token <string> IDENT
 %token <string> STRING_LITERAL
+%token <string> CHAR_LITERAL
 %token <float> FLOAT_LITERAL
 %token <int> INT_LITERAL
 %token LPAREN RPAREN LCURLY RCURLY LBRACK RBRACK
@@ -47,6 +48,7 @@ expr:
   | FALSE                                     { False }
   | FLOAT_LITERAL                             { FloatLiteral $1 }
   | INT_LITERAL                               { IntLiteral $1 }
+  | CHAR_LITERAL                              { CharLiteral (String.get $1 0) }
   | STRING_LITERAL                            { StringLiteral $1 }
   | LBRACK array RBRACK                       { ArrayLiteral ($2, Undefined) }
 

@@ -16,8 +16,7 @@ let rec main_loop _module engine lexbuf =
         | 0 -> print_string "false"
         | _ -> print_string "true"
       end
-    | Int32 -> print_int (GenericValue.as_int res)
-    | Int -> print_int (GenericValue.as_int res)
+    | Byte | Int16 | Int32 | Int -> print_int (GenericValue.as_int res)
     | Float -> print_float (GenericValue.as_float t' res)
     | Void -> print_string "void"
     | Array Byte ->

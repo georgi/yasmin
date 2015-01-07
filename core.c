@@ -20,6 +20,15 @@ array *array_new(char *buf, int32_t len, size_t size) {
   return s;
 }
 
+int string_printf(array *s, ...) {
+  va_list args;
+  va_start(args,s);
+  int ret = vprintf(s->buf,args);
+  va_end(args);
+  fflush(stdout);
+  return ret;
+}
+
 void string_puts(array *s) {
   puts(s->buf);
 }
